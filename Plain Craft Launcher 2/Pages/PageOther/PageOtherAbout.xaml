@@ -21,8 +21,8 @@
                     </Grid.ColumnDefinitions>
                     <local:MyListItem IsHitTestVisible="False" Title="龙腾猫跃" Margin="-5,0,15,0" Info="Plain Craft Launcher 的开发者！" Grid.Row="0" Grid.Column="1" />
                     <local:MyListItem IsHitTestVisible="False" Title="HerobrineXia" Margin="-5,0,15,0" Info="Plain Craft Launcher 的协力开发者！" Grid.Row="1" Grid.Column="1" />
-                    <local:MyListItem IsHitTestVisible="False" Title="HaoyuHuang" Margin="-5,0,15,0" Info="HaoyuHuang 特别版的开发者" Grid.Row="2" Grid.Column="1" />
-                    <local:MyListItem IsHitTestVisible="False" Title="PCL HaoyuHuang 特别版" Margin="-5,0,15,0" Info="第三方基于 PCL 独立修改 · %VERSION%（%VERSIONCODE%.%BRANCH%）" Grid.Row="3" Grid.Column="1" x:Name="ItemAboutPcl" />
+                    <local:MyListItem IsHitTestVisible="False" Title="Haoyu Huang" Margin="-5,0,15,0" Info="PCL特别版的制作开发者" Grid.Row="2" Grid.Column="1" />
+                    <local:MyListItem IsHitTestVisible="False" Title="PCL特别版" Margin="-5,0,15,0" Info="第三方基于 PCL 独立修改 · %VERSION%（%VERSIONCODE%.%BRANCH%）" Grid.Row="3" Grid.Column="1" x:Name="ItemAboutPcl" />
                     <Image Source="/Plain Craft Launcher 2;component/Images/Heads/LTCat.jpg" Grid.Row="0" Margin="3">
                         <Image.Clip>
                             <EllipseGeometry Center="17 17" RadiusX="17" RadiusY="17" />

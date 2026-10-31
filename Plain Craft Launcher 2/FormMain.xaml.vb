@@ -16,7 +16,7 @@ Public Class FormMain
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "调整：启动器更新与远程配置已关闭"))
             End If
             If LastVersion < 413 Then 'Release 2.99.0.0
-                FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "新增：第三方基于 PCL 独立制作的 HaoyuHuang 特别版"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "新增：第三方基于 PCL 独立制作的 PCL特别版"))
             End If
             If LastVersion < 411 Then 'Release 2.14.0.0
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "新增：允许修改、添加、移除、更新已安装版本的各个组件，可从版本设置中进入"))
@@ -112,7 +112,7 @@ Public Class FormMain
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "调整：启动器更新与远程配置已关闭"))
             End If
             If LastVersion < 414 Then 'Snapshot 2.99.0.0
-                FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "新增：第三方基于 PCL 独立制作的 HaoyuHuang 特别版"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "新增：第三方基于 PCL 独立制作的 PCL特别版"))
             End If
             If LastVersion < 412 Then 'Snapshot 2.14.0.0
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "新增：允许修改、添加、移除、更新已安装版本的各个组件，可从版本设置中进入"))
@@ -454,7 +454,7 @@ Public Class FormMain
             End Try
             '开源版本提示
             If Not Settings.Get(Of Boolean)("HintSpecialEditionWelcome") Then
-                MyMsgBox($"由 HaoyuHuang 基于 Plain Craft Launcher 独立开发。{vbCrLf}{vbCrLf}支持 Minecraft 下载、全部 15 个配色主题与百宝箱。{vbCrLf}启动器自动更新与远程配置已关闭。{vbCrLf}{vbCrLf}微软正版登录请在系统浏览器中完成设备代码授权。{vbCrLf}原作者：龙腾猫跃，赞助链接见「关于与鸣谢」。", "PCL HaoyuHuang 特别版")
+                MyMsgBox($"制作开发者：Haoyu Huang。{vbCrLf}第三方基于 Plain Craft Launcher 独立修改。{vbCrLf}{vbCrLf}支持 Minecraft 下载、全部 15 个配色主题与百宝箱。{vbCrLf}启动器自动更新与远程配置已关闭。{vbCrLf}{vbCrLf}微软正版登录请在系统浏览器中完成设备代码授权。{vbCrLf}原作者：龙腾猫跃，赞助链接见「关于与鸣谢」。", "PCL特别版")
                 Settings.Set("HintSpecialEditionWelcome", True)
             End If
         End Sub, "初始化", ThreadPriority.Lowest)

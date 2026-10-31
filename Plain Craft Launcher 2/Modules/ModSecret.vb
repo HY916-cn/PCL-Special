@@ -217,7 +217,7 @@ Friend Module ModSecret
 #Region "更新"
 
     Friend Sub UpdateCheckByButton()
-        Hint("PCL HaoyuHuang 特别版已关闭启动器更新。")
+        Hint("PCL特别版已关闭启动器更新。")
     End Sub
 
     Friend IsUpdateWaitingRestart As Boolean = False
