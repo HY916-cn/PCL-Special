@@ -942,8 +942,8 @@ Public Class PageOtherTest
                 If OlderThan.HasValue AndAlso Info.LastWriteTimeUtc >= OlderThan.Value Then Continue For
                 Result(Info.FullName) = New CleanupEntry With {.FilePath = Info.FullName, .Length = Info.Length, .LastWriteUtc = Info.LastWriteTimeUtc}
             Next
-            For Each Child In Directory.EnumerateDirectories(Folder)
-                AddCleanupFiles(Result, Child, Accept, OlderThan)
+            For Each ChildFolder As String In Directory.EnumerateDirectories(Folder)
+                AddCleanupFiles(Result, ChildFolder, Accept, OlderThan)
             Next
         Catch ex As UnauthorizedAccessException
         Catch ex As IOException
