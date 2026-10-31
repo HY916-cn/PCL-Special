@@ -1014,7 +1014,7 @@ NextFile:
             MyMsgBoxTick()
             FrmMain.DragTick()
             LoaderTaskbarProgressRefresh()
-            If ThemeDontClick = 2 Then ThemeRefresh()
+            If ThemeNow = 13 Then ThemeRefresh()
 #End Region
         Catch ex As Exception
             Logger.Error(ex, "短程主时钟执行异常", LogBehavior.AlertThenCrash)

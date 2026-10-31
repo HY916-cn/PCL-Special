@@ -33,12 +33,16 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
+
+[assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8")]
 
 public static class PclSmokeRunner {
     private static Assembly pcl;
     private static ResourceManager resources;
     private static readonly Dictionary<string, Assembly> libraries = new Dictionary<string, Assembly>();
+    private static Dictionary<string, object> themeResult;
     private const BindingFlags StaticMembers = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
 
     private static object Invoke(Type type, string name, params object[] arguments) {
@@ -106,6 +110,65 @@ public static class PclSmokeRunner {
             "Resetting settings re-enabled remote announcements.");
     }
 
+    private static string PrimaryThemeColor() {
+        SolidColorBrush brush = Application.Current.Resources["ColorBrush3"] as SolidColorBrush;
+        Require(brush != null && brush.Color.A > 0, "Theme did not supply a visible primary color brush.");
+        return brush.Color.ToString();
+    }
+
+    private static int ThemeField(Type theme, string name) {
+        return Convert.ToInt32(theme.GetField(name, StaticMembers).GetValue(null));
+    }
+
+    private static void CheckThemes() {
+        Type theme = pcl.GetType("PCL.ModSecret", true);
+        Type settings = pcl.GetType("PCL.Settings", true);
+        HashSet<string> staticColors = new HashSet<string>();
+        try {
+            Require(!(bool)Invoke(theme, "ThemeCheckOne", -1) && !(bool)Invoke(theme, "ThemeCheckOne", 15),
+                "Theme IDs outside 0..14 were accepted.");
+            for (int id = 0; id <= 14; id++) {
+                Require((bool)Invoke(theme, "ThemeCheckOne", id), "Theme ID was rejected: " + id);
+                Invoke(theme, "ThemeRefresh", id);
+                Require(ThemeField(theme, "ThemeNow") == id, "Theme selection was not applied: " + id);
+                string color = PrimaryThemeColor();
+                if (id <= 11) staticColors.Add(color);
+            }
+            Require(staticColors.Count == 12, "Static themes did not produce 12 distinct primary colors.");
+
+            Invoke(settings, "Set", "UiLauncherHue", 73, null);
+            Invoke(settings, "Set", "UiLauncherSat", 44, null);
+            Invoke(settings, "Set", "UiLauncherLight", 31, null);
+            Invoke(settings, "Set", "UiLauncherDelta", 110, null);
+            Invoke(theme, "ThemeRefresh", 14);
+            Require(ThemeField(theme, "ColorHue") == 73 && ThemeField(theme, "ColorSat") == 44 &&
+                ThemeField(theme, "ColorLightAdjust") == 11, "Custom theme did not apply its color settings.");
+            string customColor = PrimaryThemeColor();
+            Invoke(settings, "Set", "UiLauncherHue", 190, null);
+            Invoke(theme, "ThemeRefresh", 14);
+            Require(ThemeField(theme, "ColorHue") == 190 && PrimaryThemeColor() != customColor,
+                "Refreshing the same custom theme did not apply the changed hue.");
+
+            foreach (int id in new int[] { 12, 13 }) {
+                Invoke(theme, "ThemeRefresh", id);
+                int firstHue = ThemeField(theme, "ColorHue");
+                Thread.Sleep(240);
+                Invoke(theme, "ThemeRefresh", id);
+                Require(ThemeField(theme, "ColorHue") != firstHue,
+                    "Refreshing the same animated theme did not advance its hue: " + id);
+                PrimaryThemeColor();
+            }
+            themeResult = new Dictionary<string, object> {
+                { "passed", true }, { "themeCount", 15 }, { "distinctStaticPrimaryColors", staticColors.Count },
+                { "invalidIdsRejected", true }, { "customSettingsApplied", true },
+                { "sameCustomThemeRefresh", true }, { "animatedThemeIds", new int[] { 12, 13 } }
+            };
+            Console.WriteLine("PASS: 15 themes, 12 distinct static colors, custom color changes, and animated hue refresh.");
+        } finally {
+            Invoke(theme, "ThemeRefresh", 0);
+        }
+    }
+
     private static void DownloadTest(string work) {
         Type download = pcl.GetType("PCL.ModDownload", true);
         Type network = pcl.GetType("PCL.ModNet", true);
@@ -137,7 +200,8 @@ public static class PclSmokeRunner {
             { "downloadEngine", "PCL.ModNet.NetDownloadByLoader" },
             { "settingsStorage", "isolated default settings in local Setup.ini" },
             { "downloadRestriction", false }, { "updateMethods", "verified no-op IL" },
-            { "fixedSettings", "Set and Reset preserve updates=3, announcements=2" }
+            { "fixedSettings", "Set and Reset preserve updates=3, announcements=2" },
+            { "themes", themeResult }
         };
         File.WriteAllText(Path.Combine(work, "smoke-result.json"), serializer.Serialize(report));
         Console.WriteLine("PASS: PCL resolved Minecraft 1.0, downloaded JSON and client JAR, and verified size/SHA-1.");
@@ -178,6 +242,8 @@ public static class PclSmokeRunner {
             // Initialize UiThreadId on the dispatcher thread before any network worker starts.
             Console.WriteLine("INIT: PCL modules");
             RuntimeHelpers.RunClassConstructor(pcl.GetType("PCL.ModBase", true).TypeHandle);
+            Console.WriteLine("VERIFY: theme palettes and refresh behavior");
+            CheckThemes();
             Exception failure = null;
             bool finished = false;
             Thread worker = new Thread(delegate() {

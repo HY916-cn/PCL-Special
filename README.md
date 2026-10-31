@@ -23,7 +23,8 @@ Minecraft 原版下载不依赖这两个值。源码未包含官方联机配置�
 ## 源码与构建
 
 源码随 `PCL-HY916-Fixed-2.99.0.1-Source.zip` 提供，包含固定版本的 MeloongCore。
-源码及修改继续使用仓库中的 `LICENCE`。正版购买提示、原作者署名与赞助链接保留，界面保持蓝色主题。
+源码及修改保留仓库中的 `LICENCE`、正版购买提示、原作者署名与赞助链接。
+特别版本由 Haoyu Huang 开发，关于页面使用其提供的头像。主题页面的全部 15 项可选，包含两种动态配色和自定义调色。
 
 Windows 安装 Visual Studio 2022 Build Tools（.NET 桌面开发、.NET Framework 4.8 SDK）及支持 C# 13 的 .NET SDK 后执行：
 

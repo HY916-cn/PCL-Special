@@ -65,10 +65,51 @@ Friend Module ModSecret
     Public ColorHue As Integer = 210, ColorSat As Integer = 85, ColorLightAdjust As Integer = 0, ColorHueTopbarDelta As OneOf(Of Integer, Integer()) = 0
     Public ThemeDontClick As Integer = 0
 
+    Private ReadOnly ThemePalettes As Integer(,) = {
+        {210, 85, 0, 0},  '龙猫蓝
+        {175, 70, 0, 0},  '甜柠青
+        {125, 65, 0, 0},  '小草绿
+        {50, 80, 0, 0},   '菠萝黄
+        {28, 45, -3, 0},  '橡木棕
+        {210, 0, -10, 0}, '玄素黑
+        {330, 65, 0, 0},  '铁杆粉
+        {275, 60, 0, 0},  '神秘紫
+        {42, 70, -2, 0},  '秋仪金
+        {24, 85, 0, 0},   '活跃橙
+        {0, 75, 0, 0},    '跳票红
+        {225, 90, -4, 18} '极客蓝
+    }
+
     Public Sub ThemeRefresh(Optional NewTheme As Integer = -1)
+        If Not RunInUi() Then
+            RunInUi(Sub() ThemeRefresh(NewTheme))
+            Return
+        End If
         Try
-            If ThemeNow = NewTheme AndAlso NewTheme >= 0 Then Return
             If NewTheme >= 0 Then ThemeNow = NewTheme
+            If Not ThemeCheckOne(ThemeNow) Then ThemeNow = 0
+            ThemeDontClick = 0
+            If ThemeNow <= 11 Then
+                ColorHue = ThemePalettes(ThemeNow, 0)
+                ColorSat = ThemePalettes(ThemeNow, 1)
+                ColorLightAdjust = ThemePalettes(ThemeNow, 2)
+                ColorHueTopbarDelta = ThemePalettes(ThemeNow, 3)
+            ElseIf ThemeNow = 12 Then
+                ColorHue = CInt((GetTimeMs() \ 80L) Mod 360L)
+                ColorSat = 80
+                ColorLightAdjust = 0
+                ColorHueTopbarDelta = 45
+            ElseIf ThemeNow = 13 Then
+                ColorHue = CInt((GetTimeMs() \ 40L) Mod 360L)
+                ColorSat = 75
+                ColorLightAdjust = 0
+                ColorHueTopbarDelta = New Integer() {0, 120, 240}
+            Else
+                ColorHue = Settings.Get(Of Integer)("UiLauncherHue").Clamp(0, 360) Mod 360
+                ColorSat = Settings.Get(Of Integer)("UiLauncherSat").Clamp(0, 100)
+                ColorLightAdjust = Settings.Get(Of Integer)("UiLauncherLight").Clamp(0, 40) - 20
+                ColorHueTopbarDelta = Settings.Get(Of Integer)("UiLauncherDelta").Clamp(0, 180) - 90
+            End If
 
             Color1 = New MyColor().FromHSL2(ColorHue, ColorSat * 0.2, 25 + ColorLightAdjust * 0.3)
             Color2 = New MyColor().FromHSL2(ColorHue, ColorSat, 45 + ColorLightAdjust)
@@ -110,7 +151,7 @@ Friend Module ModSecret
     Public Sub ThemeRefreshMain()
         RunInUi(
         Sub()
-            If Not FrmMain.IsLoaded Then Return
+            If FrmMain Is Nothing OrElse Not FrmMain.IsLoaded Then Return
             '顶部条背景
             Dim Brush = New LinearGradientBrush With {.EndPoint = New Point(1, 0), .StartPoint = New Point(0, 0)}
             Dim Deltas = ColorHueTopbarDelta.Switch(Function(d) New Integer() {-d, 0, d}, Function(d) d)
@@ -135,7 +176,7 @@ Friend Module ModSecret
     Friend Sub ThemeCheckAll(EffectSetup As Boolean)
     End Sub
     Friend Function ThemeCheckOne(Id As Integer) As Boolean
-        Return True
+        Return Id >= 0 AndAlso Id <= 14
     End Function
     Friend Function ThemeUnlock(Id As Integer, Optional ShowDoubleHint As Boolean = True, Optional UnlockHint As String = Nothing) As Boolean
         Return False
