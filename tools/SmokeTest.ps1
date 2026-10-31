@@ -26,10 +26,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Resources;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows;
@@ -44,6 +47,7 @@ public static class PclSmokeRunner {
     private static readonly Dictionary<string, Assembly> libraries = new Dictionary<string, Assembly>();
     private static Dictionary<string, object> themeResult;
     private static Dictionary<string, object> toolboxResult;
+    private static Dictionary<string, object> sourcePolicyResult;
     private const BindingFlags StaticMembers = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
 
     private static object Invoke(Type type, string name, params object[] arguments) {
@@ -317,14 +321,191 @@ public static class PclSmokeRunner {
         };
     }
 
+    private static string[] Urls(object value) {
+        return ((IEnumerable)value).Cast<string>().ToArray();
+    }
+
+    private static void CheckSourcePolicy(string work) {
+        Type download = pcl.GetType("PCL.ModDownload", true);
+        Type settings = pcl.GetType("PCL.Settings", true);
+        object official = download.GetField("DlClientListMojangLoader", StaticMembers).GetValue(null);
+        object mirror = download.GetField("DlClientListBmclapiLoader", StaticMembers).GetValue(null);
+        MethodInfo planner = download.GetMethod("DlGetSourceLoaders", StaticMembers).MakeGenericMethod(official.GetType().GetGenericArguments());
+        try {
+            for (int mode = 0; mode <= 2; mode++) {
+                Invoke(settings, "Set", "ToolDownloadSource", mode, null);
+                Invoke(settings, "Set", "ToolDownloadVersion", mode, null);
+                string[] expected = mode == 2 ? new string[] { "official", "mirror" } : new string[] { "mirror", "official" };
+                Require(Urls(Invoke(download, "DlSourceOrder", new string[] { "official", "official" }, new string[] { "mirror", "mirror" })).SequenceEqual(expected),
+                    "File source priority/deduplication is incorrect for mode " + mode);
+                Require(Urls(Invoke(download, "DlVersionListOrder", new string[] { "official", "official" }, new string[] { "mirror", "mirror" })).SequenceEqual(expected),
+                    "Version-list source priority/deduplication is incorrect for mode " + mode);
+                object[] plan = ((IEnumerable)planner.Invoke(null, new object[] { official, mirror })).Cast<object>().ToArray();
+                int firstWait = mode == 2 ? 10 : mode == 0 ? 5 : 1;
+                Require(plan.Length == 2 && Object.ReferenceEquals(plan[0].GetType().GetProperty("Key").GetValue(plan[0], null), mode == 2 ? official : mirror) &&
+                    Object.ReferenceEquals(plan[1].GetType().GetProperty("Key").GetValue(plan[1], null), mode == 2 ? mirror : official),
+                    "Version-list loader order is incorrect for mode " + mode);
+                Require(Convert.ToInt32(plan[0].GetType().GetProperty("Value").GetValue(plan[0], null)) == firstWait &&
+                    Convert.ToInt32(plan[1].GetType().GetProperty("Value").GetValue(plan[1], null)) == firstWait + 30,
+                    "Version-list fallback timing is incorrect for mode " + mode);
+
+                string asset = "https://resources.download.minecraft.net/ab/abcdef";
+                string assetMirror = "https://bmclapi2.bangbang93.com/assets/ab/abcdef";
+                Require(Urls(Invoke(download, "DlSourceAssetsGet", asset)).SequenceEqual(mode == 2 ? new string[] { asset, assetMirror } : new string[] { assetMirror, asset }),
+                    "Asset source priority or official fallback is incorrect for mode " + mode);
+                string library = "https://libraries.minecraft.net/org/example/test/1/test-1.jar";
+                string mavenMirror = "https://bmclapi2.bangbang93.com/maven/org/example/test/1/test-1.jar";
+                string libraryMirror = "https://bmclapi2.bangbang93.com/libraries/org/example/test/1/test-1.jar";
+                Require(Urls(Invoke(download, "DlSourceLibraryGet", library)).SequenceEqual(mode == 2 ? new string[] { library, mavenMirror, libraryMirror } : new string[] { mavenMirror, libraryMirror, library }),
+                    "Library source priority or official fallback is incorrect for mode " + mode);
+                foreach (string host in new string[] { "maven.fabricmc.net", "maven.minecraftforge.net", "maven.neoforged.net" }) {
+                    string path = "/org/example/tool/1/tool-1.jar?test=1#fragment";
+                    string original = "https://" + host + (host == "maven.neoforged.net" ? "/releases" : "") + path;
+                    string mirrored = "https://bmclapi2.bangbang93.com/maven" + path;
+                    Require(Urls(Invoke(download, "DlSourceLibraryGet", original)).SequenceEqual(mode == 2 ? new string[] { original, mirrored } : new string[] { mirrored, original }),
+                        "Vendor Maven mapping lost its path, priority, or official fallback: " + host);
+                }
+                foreach (string host in new string[] { "piston-data.mojang.com", "piston-meta.mojang.com", "launcher.mojang.com", "launchermeta.mojang.com" }) {
+                    string original = "https://" + host + "/v1/objects/abcdef/client.jar?test=1";
+                    string mirrored = "https://bmclapi2.bangbang93.com/v1/objects/abcdef/client.jar?test=1";
+                    Require(Urls(Invoke(download, "DlSourceLauncherOrMetaGet", original)).SequenceEqual(mode == 2 ? new string[] { original, mirrored } : new string[] { mirrored, original }),
+                        "Launcher/meta source mapping lost URL data, priority, or fallback for " + host);
+                }
+                string[] unknown = { "https://libraries.minecraft.net.example.invalid/test.jar",
+                    "https://resources.download.minecraft.net.example.invalid/ab/abcdef",
+                    "https://piston-meta.mojang.com.example.invalid/v1/test.json",
+                    "https://example.invalid/path/https://libraries.minecraft.net/test.jar?source=https://piston-data.mojang.com/test",
+                    "https://example.invalid/file.jar?source=https://resources.download.minecraft.net/ab/abcdef" };
+                foreach (string helper in new string[] { "DlSourceAssetsGet", "DlSourceLibraryGet", "DlSourceLauncherOrMetaGet" })
+                    foreach (string original in unknown)
+                        Require(Urls(Invoke(download, helper, original)).SequenceEqual(new string[] { original }),
+                            "Unrecognized URL was rewritten or duplicated by " + helper + ": " + original);
+                string customMaven = "https://maven.example.invalid/org/example/test/1/test-1.jar";
+                string[] mixed = { library, mavenMirror, customMaven, libraryMirror, library, mavenMirror };
+                string[] ordered = Urls(Invoke(pcl.GetType("PCL.ModMinecraft", true), "McLibSourceOrder", new object[] { mixed }));
+                Require(ordered.SequenceEqual(mode == 2 ? new string[] { library, customMaven, mavenMirror, libraryMirror } : new string[] { mavenMirror, libraryMirror, library, customMaven }),
+                    "Final library source order lost candidates, priority, or deduplication for mode " + mode);
+                Type minecraft = pcl.GetType("PCL.ModMinecraft", true);
+                Type tokenType = pcl.GetType("PCL.ModMinecraft+McLibEntry", true);
+                object token = Activator.CreateInstance(tokenType);
+                string folder = Path.Combine(work, "SourcePolicyGame") + Path.DirectorySeparatorChar;
+                tokenType.GetField("LocalPath").SetValue(token, folder + @"libraries\org\example\test\1\test-1.jar");
+                tokenType.GetField("OriginalName").SetValue(token, "org.example:test:1");
+                tokenType.GetProperty("Url").SetValue(token, library, null);
+                IList tokens = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(tokenType));
+                tokens.Add(token);
+                object file = ((IEnumerable)Invoke(minecraft, "McLibNetFilesFromTokens", tokens, folder)).Cast<object>().Single();
+                string[] fileSources = ((IEnumerable)file.GetType().GetField("Sources").GetValue(file)).Cast<object>()
+                    .Select(source => (string)source.GetType().GetField("Url").GetValue(source)).ToArray();
+                Require(fileSources.SequenceEqual(mode == 2 ? new string[] { library, mavenMirror, libraryMirror } : new string[] { mavenMirror, libraryMirror, library }),
+                    "Production library NetFile still bypasses the selected source priority for mode " + mode);
+                string apachePath = "/org/apache/maven/maven-artifact/3.9.0/maven-artifact-3.9.0.jar";
+                string apacheOfficial = "https://libraries.minecraft.net" + apachePath;
+                string apacheMaven = "https://bmclapi2.bangbang93.com/maven" + apachePath;
+                string apacheLibrary = "https://bmclapi2.bangbang93.com/libraries" + apachePath;
+                tokenType.GetField("LocalPath").SetValue(token, folder + "libraries" + apachePath.Replace('/', Path.DirectorySeparatorChar));
+                tokenType.GetField("OriginalName").SetValue(token, "org.apache.maven:maven-artifact:3.9.0");
+                tokenType.GetProperty("Url").SetValue(token, apacheOfficial, null);
+                file = ((IEnumerable)Invoke(minecraft, "McLibNetFilesFromTokens", tokens, folder)).Cast<object>().Single();
+                fileSources = ((IEnumerable)file.GetType().GetField("Sources").GetValue(file)).Cast<object>()
+                    .Select(source => (string)source.GetType().GetField("Url").GetValue(source)).ToArray();
+                Require(fileSources.SequenceEqual(mode == 2 ? new string[] { apacheOfficial, apacheMaven, apacheLibrary } : new string[] { apacheMaven, apacheLibrary, apacheOfficial }),
+                    "A normal library path containing org/apache/maven was truncated or misrouted for mode " + mode);
+            }
+            sourcePolicyResult = new Dictionary<string, object> {
+                { "passed", true }, { "modesVerified", new int[] { 0, 1, 2 } }, { "mirrorPreferredInAutomaticMode", true },
+                { "manualOfficialPriorityPreserved", true }, { "sourceDeduplication", true }, { "versionLoaderPlan", true },
+                { "assetLibraryMetaMappings", true }, { "unknownUrlsPreserved", true }, { "finalLibraryOrder", true },
+                { "productionLibraryNetFileOrder", true }, { "vendorMavenMappings", true },
+                { "apacheMavenLibraryPathPreserved", true }, { "officialFallbackPreserved", true }
+            };
+        } finally {
+            Invoke(settings, "Set", "ToolDownloadSource", 1, null);
+            Invoke(settings, "Set", "ToolDownloadVersion", 1, null);
+        }
+    }
+
+    private static object NewChecker(long size, string hash, bool isJson) {
+        Type type = libraries["MeloongCore"].GetType("MeloongCore.FileChecker", true);
+        object checker = Activator.CreateInstance(type);
+        type.GetField("ActualSize").SetValue(checker, size);
+        type.GetField("Hash").SetValue(checker, hash);
+        type.GetField("IsJson").SetValue(checker, isJson);
+        return checker;
+    }
+
+    private static string Sha1(byte[] bytes) {
+        using (SHA1 sha = SHA1.Create())
+            return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+    }
+
+    private static Dictionary<string, object> CheckLocalFallback(string work) {
+        TcpListener server = new TcpListener(IPAddress.Loopback, 0);
+        server.Start();
+        string root = "http://127.0.0.1:" + ((IPEndPoint)server.LocalEndpoint).Port;
+        byte[] good = Encoding.ASCII.GetBytes(new String('G', 4096));
+        byte[] bad = Encoding.ASCII.GetBytes(new String('B', good.Length));
+        Dictionary<string, int> requests = new Dictionary<string, int>();
+        bool running = true;
+        Thread responder = new Thread(delegate() {
+            while (Volatile.Read(ref running)) {
+                try {
+                    using (TcpClient client = server.AcceptTcpClient())
+                    using (NetworkStream stream = client.GetStream())
+                    using (StreamReader reader = new StreamReader(stream, Encoding.ASCII, false, 8192, true)) {
+                        client.ReceiveTimeout = 10000;
+                        string request = reader.ReadLine();
+                        if (String.IsNullOrEmpty(request)) continue;
+                        string path = request.Split(' ')[1];
+                        string line;
+                        while (!String.IsNullOrEmpty(line = reader.ReadLine())) { }
+                        lock (requests) { requests[path] = requests.ContainsKey(path) ? requests[path] + 1 : 1; }
+                        byte[] body = path == "/missing" ? new byte[0] : path == "/corrupt" ? bad : good;
+                        string status = path == "/missing" ? "404 Not Found" : "200 OK";
+                        byte[] header = Encoding.ASCII.GetBytes("HTTP/1.1 " + status + "\r\nContent-Length: " + body.Length + "\r\nConnection: close\r\n\r\n");
+                        stream.Write(header, 0, header.Length);
+                        stream.Write(body, 0, body.Length);
+                    }
+                } catch (SocketException) { if (Volatile.Read(ref running)) throw; }
+                  catch (ObjectDisposedException) { if (Volatile.Read(ref running)) throw; }
+                  catch (IOException) { }
+            }
+        });
+        responder.IsBackground = true;
+        responder.Start();
+        try {
+            Type network = pcl.GetType("PCL.ModNet", true);
+            string hash = Sha1(good);
+            foreach (string first in new string[] { "missing", "corrupt" }) {
+                string second = "/valid-" + first;
+                string path = Path.Combine(work, "fallback-" + first + ".bin");
+                Invoke(network, "NetDownloadByLoader", new string[] { root + "/" + first, root + second }, path, null, NewChecker(good.Length, hash, false), false);
+                Require(File.ReadAllBytes(path).SequenceEqual(good), "Fallback produced incorrect bytes after " + first);
+                lock (requests) {
+                    Require(requests.ContainsKey("/" + first) && requests.ContainsKey(second),
+                        "Fallback did not attempt both sources after " + first);
+                }
+            }
+            Console.WriteLine("PASS: PCL switched sources after local HTTP 404 and SHA-1 mismatch.");
+            return new Dictionary<string, object> { { "http404Fallback", true }, { "sha1MismatchFallback", true }, { "loopbackOnly", true } };
+        } finally {
+            Volatile.Write(ref running, false);
+            server.Stop();
+            responder.Join(2000);
+        }
+    }
+
     private static void DownloadTest(string work) {
+        Invoke(pcl.GetType("PCL.Settings", true), "Set", "SystemDebugSkipCopy", true, null);
+        Dictionary<string, object> fallbackResult = CheckLocalFallback(work);
         Dictionary<string, object> loginResult = CheckMicrosoftDeviceCode();
         Type download = pcl.GetType("PCL.ModDownload", true);
         Type network = pcl.GetType("PCL.ModNet", true);
         string jsonUrl = (string)Invoke(download, "DlClientListGet", "1.0");
         Require(!String.IsNullOrEmpty(jsonUrl), "PCL could not resolve Minecraft 1.0 from its version list.");
         string jsonPath = Path.Combine(work, "1.0.json");
-        Invoke(network, "NetDownloadByClient", jsonUrl, jsonPath, false);
+        string[] jsonSources = Urls(Invoke(download, "DlSourceLauncherOrMetaGet", jsonUrl));
+        Invoke(network, "NetDownloadByLoader", jsonSources, jsonPath, null, NewChecker(-1, null, true), false);
 
         JavaScriptSerializer serializer = new JavaScriptSerializer();
         serializer.MaxJsonLength = Int32.MaxValue;
@@ -335,8 +516,8 @@ public static class PclSmokeRunner {
         string expectedHash = (string)client["sha1"];
         long expectedSize = Convert.ToInt64(client["size"]);
         string jarPath = Path.Combine(work, "1.0.jar");
-        // No local-file checker: this forces a network download and avoids scanning existing MC folders.
-        Invoke(network, "NetDownloadByLoader", jarUrl, jarPath, null, null, false);
+        string[] jarSources = Urls(Invoke(download, "DlSourceLauncherOrMetaGet", jarUrl));
+        Invoke(network, "NetDownloadByLoader", jarSources, jarPath, null, NewChecker(expectedSize, expectedHash, false), false);
         string actualHash;
         using (SHA1 sha = SHA1.Create())
         using (FileStream stream = File.OpenRead(jarPath))
@@ -346,7 +527,9 @@ public static class PclSmokeRunner {
         Dictionary<string, object> report = new Dictionary<string, object> {
             { "passed", false }, { "downloadPassed", true }, { "version", "1.0" }, { "manifestUrl", jsonUrl },
             { "clientUrl", jarUrl }, { "clientBytes", expectedSize }, { "clientSha1", actualHash },
-            { "downloadEngine", "PCL.ModNet.NetDownloadByLoader" },
+            { "downloadEngine", "PCL.ModNet.NetDownloadByLoader with production sources and FileChecker" },
+            { "manifestSources", jsonSources }, { "clientSources", jarSources },
+            { "sourcePolicy", sourcePolicyResult }, { "localFallback", fallbackResult },
             { "settingsStorage", "isolated default settings in local Setup.ini" },
             { "downloadRestriction", false }, { "updateMethods", "verified no-op IL" },
             { "fixedSettings", "Set and Reset preserve updates=3, announcements=2, telemetry=false" },
@@ -397,6 +580,8 @@ public static class PclSmokeRunner {
             Console.WriteLine("VERIFY: original toolbox behavior");
             CheckToolbox(work);
             CheckMicrosoftPollingRules();
+            Console.WriteLine("VERIFY: download source ordering and fallback plan");
+            CheckSourcePolicy(work);
             Exception failure = null;
             bool finished = false;
             Thread worker = new Thread(delegate() {

@@ -1861,19 +1861,11 @@ OnLoaded:
             End If
             If Token.Url IsNot Nothing Then
                 '获取 URL 的真实地址
-                Urls.Add(Token.Url)
                 If Token.Url.Contains("launcher.mojang.com/v1/objects") OrElse Token.Url.Contains("client.txt") OrElse
                    Token.Url.Contains(".tsrg") Then
                     Urls.AddRange(DlSourceLauncherOrMetaGet(Token.Url)) 'Mappings（#4425）
-                End If
-                If Token.Url.Contains("maven") Then
-                    Dim BmclapiUrl As String =
-                        Token.Url.Replace(Token.Url.Substring(0, Token.Url.IndexOfF("maven")), "https://bmclapi2.bangbang93.com/").Replace("maven.fabricmc.net", "maven").Replace("maven.minecraftforge.net", "maven").Replace("maven.neoforged.net/releases", "maven")
-                    If DlSourcePreferMojang Then
-                        Urls.Add(BmclapiUrl) '官方源优先
-                    Else
-                        Urls.Insert(0, BmclapiUrl) '镜像源优先
-                    End If
+                Else
+                    Urls.AddRange(DlSourceLibraryGet(Token.Url))
                 End If
             End If
             If Token.LocalPath.Contains("transformer-discovery-service") Then
@@ -1891,11 +1883,16 @@ OnLoaded:
                 '普通文件
                 Urls.AddRange(DlSourceLibraryGet("https://libraries.minecraft.net" & Token.LocalPath.Replace(CustomMcFolder & "libraries", "").Replace("\", "/")))
             End If
-            Result.Add(New NetFile(Urls.Distinct, Token.LocalPath, Checker))
+            Result.Add(New NetFile(McLibSourceOrder(Urls), Token.LocalPath, Checker))
         Next
         '去重并返回
         Return Result.DistinctBy(Function(a) a.LocalPath).ToList
     End Function
+    Public Function McLibSourceOrder(Urls As IEnumerable(Of String)) As IEnumerable(Of String)
+        Dim IsMirror As Func(Of String, Boolean) = Function(Url) Url.StartsWithF("https://bmclapi2.bangbang93.com/", True)
+        Return DlSourceOrder(Urls.Where(Function(Url) Not IsMirror(Url)), Urls.Where(IsMirror))
+    End Function
+
     ''' <summary>
     ''' 获取对应的支持库文件地址。
     ''' </summary>

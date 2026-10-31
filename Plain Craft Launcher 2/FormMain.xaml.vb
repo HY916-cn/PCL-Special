@@ -436,7 +436,7 @@ Public Class FormMain
             Try
                 JavaInit() '延后到同意协议后再执行，避免在初次启动时进行进程操作
                 Thread.Sleep(100)
-                DlClientListMojangLoader.Start(1) 'PCL 会同时根据这里的加载结果决定是否使用官方源进行下载
+                DlClientListMojangLoader.Start(1) '预加载官方版本列表，供新版本提示和下载回退使用进行下载
                 RunCountSub()
                 RunInNewThread(AddressOf TryClearTaskTemp, "TryClearTaskTemp", ThreadPriority.BelowNormal)
             Catch ex As Exception

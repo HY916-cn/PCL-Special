@@ -195,23 +195,7 @@ Public Module ModDownload
     ''' </summary>
     Public DlClientListLoader As New LoaderTask(Of String, DlClientListResult)("DlClientList Main", AddressOf DlClientListMain)
     Private Sub DlClientListMain(Loader As LoaderTask(Of String, DlClientListResult))
-        Select Case Settings.Get(Of Integer)("ToolDownloadVersion")
-            Case 0
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of String, DlClientListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of String, DlClientListResult), Integer)(DlClientListBmclapiLoader, 30),
-                    New KeyValuePair(Of LoaderTask(Of String, DlClientListResult), Integer)(DlClientListMojangLoader, 30 + 60)
-                }, Loader.IsForceRestarting)
-            Case 1
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of String, DlClientListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of String, DlClientListResult), Integer)(DlClientListMojangLoader, 5),
-                    New KeyValuePair(Of LoaderTask(Of String, DlClientListResult), Integer)(DlClientListBmclapiLoader, 5 + 30)
-                }, Loader.IsForceRestarting)
-            Case Else
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of String, DlClientListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of String, DlClientListResult), Integer)(DlClientListMojangLoader, 60),
-                    New KeyValuePair(Of LoaderTask(Of String, DlClientListResult), Integer)(DlClientListBmclapiLoader, 60 + 60)
-                }, Loader.IsForceRestarting)
-        End Select
+        DlSourceLoader(Loader, DlGetSourceLoaders(DlClientListMojangLoader, DlClientListBmclapiLoader), Loader.IsForceRestarting)
         '提取所有 Drop 序数
         Dim Drops As New List(Of Integer)
         For Each Version As JObject In Loader.Output.Value("versions")
@@ -230,17 +214,10 @@ Public Module ModDownload
     ''' </summary>
     Public DlClientListMojangLoader As New LoaderTask(Of String, DlClientListResult)("DlClientList Mojang", AddressOf DlClientListMojangMain)
     Private Sub DlClientListMojangMain(Loader As LoaderTask(Of String, DlClientListResult))
-        Dim StartTime As Long = GetTimeMs()
         Dim Json As JObject = NetRequestByClientRetry("https://launchermeta.mojang.com/mc/game/version_manifest.json", RequireJson:=True).DeserializeJson()
         Try
             Dim Versions As JArray = Json("versions")
             If Versions.Count < 200 Then Throw New Exception("获取到的版本列表长度不足（" & Json.ToString & "）")
-            '确定官方源是否可用
-            If Not DlPreferMojang Then
-                Dim DeltaTime = GetTimeMs() - StartTime
-                DlPreferMojang = DeltaTime < 4000
-                Logger.Info($"Mojang 官方源加载耗时：{DeltaTime}ms，{If(DlPreferMojang, "可优先使用官方源", "不优先使用官方源")}")
-            End If
             '返回
             Loader.Output = New DlClientListResult With {.IsOfficial = True, .SourceName = "Mojang 官方源", .Value = Json}
             'MC 更新提示
@@ -280,7 +257,7 @@ Public Module ModDownload
             '检查是否有要求的版本（#5195）
             If Not String.IsNullOrEmpty(Loader.Input) Then
                 Dim Id = Loader.Input
-                If DlClientListLoader.Output.Value IsNot Nothing AndAlso Not DlClientListLoader.Output.Value("versions").Any(Function(v) v("id") = Id) Then
+                If Not Versions.Any(Function(v) v("id") = Id) Then
                     Throw New Exception("BMCLAPI 源未包含目标版本 " & Id)
                 End If
             End If
@@ -389,23 +366,7 @@ Public Module ModDownload
     ''' </summary>
     Public DlOptiFineListLoader As New LoaderTask(Of Integer, DlOptiFineListResult)("DlOptiFineList Main", AddressOf DlOptiFineListMain)
     Private Sub DlOptiFineListMain(Loader As LoaderTask(Of Integer, DlOptiFineListResult))
-        Select Case Settings.Get(Of Integer)("ToolDownloadVersion")
-            Case 0
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlOptiFineListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlOptiFineListResult), Integer)(DlOptiFineListBmclapiLoader, 30),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlOptiFineListResult), Integer)(DlOptiFineListOfficialLoader, 30 + 60)
-                }, Loader.IsForceRestarting)
-            Case 1
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlOptiFineListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlOptiFineListResult), Integer)(DlOptiFineListOfficialLoader, 5),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlOptiFineListResult), Integer)(DlOptiFineListBmclapiLoader, 5 + 30)
-                }, Loader.IsForceRestarting)
-            Case Else
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlOptiFineListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlOptiFineListResult), Integer)(DlOptiFineListOfficialLoader, 60),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlOptiFineListResult), Integer)(DlOptiFineListBmclapiLoader, 60 + 60)
-                }, Loader.IsForceRestarting)
-        End Select
+        DlSourceLoader(Loader, DlGetSourceLoaders(DlOptiFineListOfficialLoader, DlOptiFineListBmclapiLoader), Loader.IsForceRestarting)
     End Sub
 
     ''' <summary>
@@ -495,23 +456,7 @@ Public Module ModDownload
     ''' </summary>
     Public DlForgeListLoader As New LoaderTask(Of Integer, DlForgeListResult)("DlForgeList Main", AddressOf DlForgeListMain)
     Private Sub DlForgeListMain(Loader As LoaderTask(Of Integer, DlForgeListResult))
-        Select Case Settings.Get(Of Integer)("ToolDownloadVersion")
-            Case 0
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlForgeListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlForgeListResult), Integer)(DlForgeListBmclapiLoader, 30),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlForgeListResult), Integer)(DlForgeListOfficialLoader, 30 + 60)
-                }, Loader.IsForceRestarting)
-            Case 1
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlForgeListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlForgeListResult), Integer)(DlForgeListOfficialLoader, 5),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlForgeListResult), Integer)(DlForgeListBmclapiLoader, 5 + 30)
-                }, Loader.IsForceRestarting)
-            Case Else
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlForgeListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlForgeListResult), Integer)(DlForgeListOfficialLoader, 60),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlForgeListResult), Integer)(DlForgeListBmclapiLoader, 60 + 60)
-                }, Loader.IsForceRestarting)
-        End Select
+        DlSourceLoader(Loader, DlGetSourceLoaders(DlForgeListOfficialLoader, DlForgeListBmclapiLoader), Loader.IsForceRestarting)
     End Sub
 
     ''' <summary>
@@ -644,23 +589,7 @@ Public Module ModDownload
     Public Sub DlForgeVersionMain(Loader As LoaderTask(Of String, List(Of DlForgeVersionEntry)))
         Dim DlForgeVersionOfficialLoader As New LoaderTask(Of String, List(Of DlForgeVersionEntry))("DlForgeVersion Official", AddressOf DlForgeVersionOfficialMain)
         Dim DlForgeVersionBmclapiLoader As New LoaderTask(Of String, List(Of DlForgeVersionEntry))("DlForgeVersion Bmclapi", AddressOf DlForgeVersionBmclapiMain)
-        Select Case Settings.Get(Of Integer)("ToolDownloadVersion")
-            Case 0
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of String, List(Of DlForgeVersionEntry)), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of String, List(Of DlForgeVersionEntry)), Integer)(DlForgeVersionBmclapiLoader, 30),
-                    New KeyValuePair(Of LoaderTask(Of String, List(Of DlForgeVersionEntry)), Integer)(DlForgeVersionOfficialLoader, 30 + 60)
-                }, Loader.IsForceRestarting)
-            Case 1
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of String, List(Of DlForgeVersionEntry)), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of String, List(Of DlForgeVersionEntry)), Integer)(DlForgeVersionOfficialLoader, 5),
-                    New KeyValuePair(Of LoaderTask(Of String, List(Of DlForgeVersionEntry)), Integer)(DlForgeVersionBmclapiLoader, 5 + 30)
-                }, Loader.IsForceRestarting)
-            Case Else
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of String, List(Of DlForgeVersionEntry)), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of String, List(Of DlForgeVersionEntry)), Integer)(DlForgeVersionOfficialLoader, 60),
-                    New KeyValuePair(Of LoaderTask(Of String, List(Of DlForgeVersionEntry)), Integer)(DlForgeVersionBmclapiLoader, 60 + 60)
-                }, Loader.IsForceRestarting)
-        End Select
+        DlSourceLoader(Loader, DlGetSourceLoaders(DlForgeVersionOfficialLoader, DlForgeVersionBmclapiLoader), Loader.IsForceRestarting)
     End Sub
 
     ''' <summary>
@@ -879,23 +808,7 @@ Public Module ModDownload
     ''' </summary>
     Public DlNeoForgeListLoader As New LoaderTask(Of Integer, DlNeoForgeListResult)("DlNeoForgeList Main", AddressOf DlNeoForgeListMain)
     Private Sub DlNeoForgeListMain(Loader As LoaderTask(Of Integer, DlNeoForgeListResult))
-        Select Case Settings.Get(Of Integer)("ToolDownloadVersion")
-            Case 0
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlNeoForgeListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlNeoForgeListResult), Integer)(DlNeoForgeListBmclapiLoader, 30),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlNeoForgeListResult), Integer)(DlNeoForgeListOfficialLoader, 30 + 60)
-                }, Loader.IsForceRestarting)
-            Case 1
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlNeoForgeListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlNeoForgeListResult), Integer)(DlNeoForgeListOfficialLoader, 5),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlNeoForgeListResult), Integer)(DlNeoForgeListBmclapiLoader, 5 + 30)
-                }, Loader.IsForceRestarting)
-            Case Else
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlNeoForgeListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlNeoForgeListResult), Integer)(DlNeoForgeListOfficialLoader, 60),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlNeoForgeListResult), Integer)(DlNeoForgeListBmclapiLoader, 60 + 60)
-                }, Loader.IsForceRestarting)
-        End Select
+        DlSourceLoader(Loader, DlGetSourceLoaders(DlNeoForgeListOfficialLoader, DlNeoForgeListBmclapiLoader), Loader.IsForceRestarting)
     End Sub
 
     ''' <summary>
@@ -1004,23 +917,7 @@ Public Module ModDownload
     ''' </summary>
     Public DlLiteLoaderListLoader As New LoaderTask(Of Integer, DlLiteLoaderListResult)("DlLiteLoaderList Main", AddressOf DlLiteLoaderListMain)
     Private Sub DlLiteLoaderListMain(Loader As LoaderTask(Of Integer, DlLiteLoaderListResult))
-        Select Case Settings.Get(Of Integer)("ToolDownloadVersion")
-            Case 0
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlLiteLoaderListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlLiteLoaderListResult), Integer)(DlLiteLoaderListBmclapiLoader, 30),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlLiteLoaderListResult), Integer)(DlLiteLoaderListOfficialLoader, 30 + 60)
-                }, Loader.IsForceRestarting)
-            Case 1
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlLiteLoaderListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlLiteLoaderListResult), Integer)(DlLiteLoaderListOfficialLoader, 5),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlLiteLoaderListResult), Integer)(DlLiteLoaderListBmclapiLoader, 5 + 30)
-                }, Loader.IsForceRestarting)
-            Case Else
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlLiteLoaderListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlLiteLoaderListResult), Integer)(DlLiteLoaderListOfficialLoader, 60),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlLiteLoaderListResult), Integer)(DlLiteLoaderListBmclapiLoader, 60 + 60)
-                }, Loader.IsForceRestarting)
-        End Select
+        DlSourceLoader(Loader, DlGetSourceLoaders(DlLiteLoaderListOfficialLoader, DlLiteLoaderListBmclapiLoader), Loader.IsForceRestarting)
     End Sub
 
     ''' <summary>
@@ -1103,23 +1000,7 @@ Public Module ModDownload
     ''' </summary>
     Public DlFabricListLoader As New LoaderTask(Of Integer, DlFabricListResult)("DlFabricList Main", AddressOf DlFabricListMain)
     Private Sub DlFabricListMain(Loader As LoaderTask(Of Integer, DlFabricListResult))
-        Select Case Settings.Get(Of Integer)("ToolDownloadVersion")
-            Case 0
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlFabricListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlFabricListResult), Integer)(DlFabricListBmclapiLoader, 30),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlFabricListResult), Integer)(DlFabricListOfficialLoader, 30 + 60)
-                }, Loader.IsForceRestarting)
-            Case 1
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlFabricListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlFabricListResult), Integer)(DlFabricListOfficialLoader, 5),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlFabricListResult), Integer)(DlFabricListBmclapiLoader, 5 + 30)
-                }, Loader.IsForceRestarting)
-            Case Else
-                DlSourceLoader(Loader, New List(Of KeyValuePair(Of LoaderTask(Of Integer, DlFabricListResult), Integer)) From {
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlFabricListResult), Integer)(DlFabricListOfficialLoader, 60),
-                    New KeyValuePair(Of LoaderTask(Of Integer, DlFabricListResult), Integer)(DlFabricListBmclapiLoader, 60 + 60)
-                }, Loader.IsForceRestarting)
-        End Select
+        DlSourceLoader(Loader, DlGetSourceLoaders(DlFabricListOfficialLoader, DlFabricListBmclapiLoader), Loader.IsForceRestarting)
     End Sub
 
     ''' <summary>
@@ -1211,13 +1092,12 @@ Public Module ModDownload
 
 #Region "DlSource | 镜像下载源"
 
-    Private DlPreferMojang As Boolean = False
     ''' <summary>
     ''' 下载文件（而非获取版本列表）的时候，是否优先使用官方源。
     ''' </summary>
     Public ReadOnly Property DlSourcePreferMojang As Boolean
         Get
-            Return Settings.Get(Of Integer)("ToolDownloadSource") = 2 OrElse (Settings.Get(Of Integer)("ToolDownloadSource") = 1 AndAlso DlPreferMojang)
+            Return Settings.Get(Of Integer)("ToolDownloadSource") = 2
         End Get
     End Property
     ''' <summary>
@@ -1231,7 +1111,7 @@ Public Module ModDownload
     ''' </summary>
     Public ReadOnly Property DlVersionListPreferMojang As Boolean
         Get
-            Return Settings.Get(Of Integer)("ToolDownloadVersion") = 2 OrElse (Settings.Get(Of Integer)("ToolDownloadVersion") = 1 AndAlso DlPreferMojang)
+            Return Settings.Get(Of Integer)("ToolDownloadVersion") = 2
         End Get
     End Property
     ''' <summary>
@@ -1246,58 +1126,47 @@ Public Module ModDownload
     ''' 下载 Assets 文件。
     ''' </summary>
     Public Function DlSourceAssetsGet(Original As String) As IEnumerable(Of String)
-        Original = Original.Replace("http://resources.download.minecraft.net", "https://resources.download.minecraft.net")
-        Return DlSourceOrder(
-            {Original},
-            {Original.
-                Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/assets").
-                Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com/assets").
-                Replace("https://resources.download.minecraft.net", "https://bmclapi2.bangbang93.com/assets")
-            })
+        If Original.StartsWithF("http://resources.download.minecraft.net/", True) Then Original = "https://" & Original.Substring(7)
+        Return DlSourceOrder({Original}, {
+            DlMirrorUrl(Original, "/assets", {"piston-data.mojang.com", "piston-meta.mojang.com", "resources.download.minecraft.net"})
+        })
     End Function
-    ''' <summary>
-    ''' 下载 Libraries 文件。
-    ''' </summary>
+    ''' <summary>下载 Libraries 文件。</summary>
     Public Function DlSourceLibraryGet(Original As String) As IEnumerable(Of String)
-        If {"minecraftforge", "fabricmc", "neoforged"}.Any(Function(k) Original.Contains(k)) Then '不添加原版源
-            Return {
-                Original.
-                    Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/maven").
-                    Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com/maven").
-                    Replace("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/maven"),
-                Original.
-                    Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/libraries").
-                    Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com/libraries").
-                    Replace("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/libraries")
-            }
-        Else
-            Return DlSourceOrder(
-                {Original},
-                {Original.
-                    Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/maven").
-                    Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com/maven").
-                    Replace("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/maven"),
-                 Original.
-                    Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com/libraries").
-                    Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com/libraries").
-                    Replace("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/libraries")
-                })
+        Dim Address As Uri = Nothing
+        If Uri.TryCreate(Original, UriKind.Absolute, Address) AndAlso
+           (Address.Scheme = Uri.UriSchemeHttps OrElse Address.Scheme = Uri.UriSchemeHttp) AndAlso
+           Address.IsDefaultPort AndAlso Address.UserInfo = "" Then
+            If {"maven.fabricmc.net", "maven.minecraftforge.net"}.Contains(Address.Host, StringComparer.OrdinalIgnoreCase) Then
+                Return DlSourceOrder({Original}, {"https://bmclapi2.bangbang93.com/maven" & Address.PathAndQuery & Address.Fragment})
+            ElseIf Address.Host.Equals("maven.neoforged.net", StringComparison.OrdinalIgnoreCase) AndAlso
+                   Address.AbsolutePath.StartsWith("/releases/", StringComparison.Ordinal) Then
+                Return DlSourceOrder({Original}, {"https://bmclapi2.bangbang93.com/maven" & Address.PathAndQuery.Substring("/releases".Length) & Address.Fragment})
+            End If
         End If
+        Dim Hosts = {"piston-data.mojang.com", "piston-meta.mojang.com", "libraries.minecraft.net"}
+        Dim Mirrors = {
+            DlMirrorUrl(Original, "/maven", Hosts),
+            DlMirrorUrl(Original, "/libraries", Hosts)
+        }
+        If {"minecraftforge", "fabricmc", "neoforged"}.Any(Function(k) Original.Contains(k)) Then Return Mirrors.Distinct()
+        Return DlSourceOrder({Original}, Mirrors)
     End Function
-    ''' <summary>
-    ''' 下载 Launcher 或 Meta 文件。
-    ''' 不应使用它来获取版本列表（因为它只使用文件下载源设置来决定源顺序）。
-    ''' </summary>
+    ''' <summary>下载 Launcher 或 Meta 文件，使用文件下载源设置。</summary>
     Public Function DlSourceLauncherOrMetaGet(Original As String) As IEnumerable(Of String)
         If Original Is Nothing Then Throw New Exception("无对应的 json 下载地址")
-        Return DlSourceOrder(
-            {Original},
-            {Original.
-                Replace("https://piston-data.mojang.com", "https://bmclapi2.bangbang93.com").
-                Replace("https://piston-meta.mojang.com", "https://bmclapi2.bangbang93.com").
-                Replace("https://launcher.mojang.com", "https://bmclapi2.bangbang93.com").
-                Replace("https://launchermeta.mojang.com", "https://bmclapi2.bangbang93.com")
-            })
+        Return DlSourceOrder({Original}, {
+            DlMirrorUrl(Original, "", {"piston-data.mojang.com", "piston-meta.mojang.com", "launcher.mojang.com", "launchermeta.mojang.com"})
+        })
+    End Function
+
+    Private Function DlMirrorUrl(Original As String, Prefix As String, Hosts As IEnumerable(Of String)) As String
+        Dim Address As Uri = Nothing
+        If Not Uri.TryCreate(Original, UriKind.Absolute, Address) OrElse
+           (Address.Scheme <> Uri.UriSchemeHttps AndAlso Address.Scheme <> Uri.UriSchemeHttp) OrElse
+           Not Address.IsDefaultPort OrElse Address.UserInfo <> "" OrElse
+           Not Hosts.Contains(Address.Host, StringComparer.OrdinalIgnoreCase) Then Return Original
+        Return "https://bmclapi2.bangbang93.com" & Prefix & Address.PathAndQuery & Address.Fragment
     End Function
 
     'Mod 下载源
@@ -1310,6 +1179,19 @@ Public Module ModDownload
             Replace("edge.forgecdn.net", "mod.mcimirror.top").
             Replace("mediafilez.forgecdn.net", "mod.mcimirror.top").
             Replace("media.forgecdn.net", "mod.mcimirror.top")
+    End Function
+
+    ''' <summary>
+    ''' 根据版本列表下载源设置安排首选源与备用源的启动时间。
+    ''' </summary>
+    Private Function DlGetSourceLoaders(Of InputType, OutputType)(Official As LoaderTask(Of InputType, OutputType),
+                                                                  Mirror As LoaderTask(Of InputType, OutputType)) As List(Of KeyValuePair(Of LoaderTask(Of InputType, OutputType), Integer))
+        Dim Choice As Integer = Settings.Get(Of Integer)("ToolDownloadVersion")
+        Dim FirstWait As Integer = If(Choice = 2, 10, If(Choice = 0, 5, 1))
+        Return New List(Of KeyValuePair(Of LoaderTask(Of InputType, OutputType), Integer)) From {
+            New KeyValuePair(Of LoaderTask(Of InputType, OutputType), Integer)(If(Choice = 2, Official, Mirror), FirstWait),
+            New KeyValuePair(Of LoaderTask(Of InputType, OutputType), Integer)(If(Choice = 2, Mirror, Official), FirstWait + 30)
+        }
     End Function
 
     'Loader 自动切换
