@@ -1,0 +1,128 @@
+{
+  "publicSnapshotSource": "https://github.com/TomorrowX6/PCL-Snapshot/blob/d867f395b2b79939127b95e873e2c2c6113cb53f/PCL/ModSecret.cs#L576",
+  "releaseBinary": "https://github.com/TomorrowX6/PCL-Snapshot/releases/download/V2.99.0.0/Plain.Craft.Launcher.2.exe",
+  "binarySHA256": "46e4b3b7b013f1d10b7b15fc793344e9a5d92aab336c5771754106c3e564552b",
+  "metadata": {
+    "version": "2.99.0.0",
+    "versionCode": 414,
+    "branch": "Official",
+    "buildType": 0,
+    "display": "快照版 2.99.0.0",
+    "authenticodeCertificateBytes": 0
+  },
+  "staticHslProfiles": {
+    "10": [
+      5,
+      70,
+      -5
+    ],
+    "9": [
+      25,
+      75,
+      5
+    ],
+    "4": [
+      35,
+      30,
+      0
+    ],
+    "8": [
+      50,
+      65,
+      10
+    ],
+    "3": [
+      75,
+      50,
+      0
+    ],
+    "2": [
+      130,
+      40,
+      0
+    ],
+    "42": [
+      225,
+      60,
+      -15
+    ],
+    "1": [
+      180,
+      50,
+      0
+    ],
+    "0": [
+      210,
+      85,
+      0
+    ],
+    "5": [
+      225,
+      10,
+      -20
+    ],
+    "11": [
+      230,
+      60,
+      -5
+    ],
+    "7": [
+      285,
+      50,
+      0
+    ],
+    "13": [
+      290,
+      50,
+      0
+    ],
+    "6": [
+      345,
+      70,
+      15
+    ]
+  },
+  "gradients": {
+    "2": [
+      5,
+      -5,
+      5
+    ],
+    "13": [
+      -30,
+      10,
+      50
+    ]
+  },
+  "rainbow": {
+    "id": 12,
+    "saturation": 45,
+    "lightAdjust": 0,
+    "initialHueRange": [
+      0,
+      359
+    ],
+    "hueStep": [
+      -4,
+      4
+    ]
+  },
+  "crossCheckedSource": "https://github.com/oliverlacey426/PCLCRK/blob/51def4747a2437e9d2b35d7810e3727167fc461b/PCL2_Source_CS/Source/PCL/ModSecret.cs#L474",
+  "titleGradientLightness": {
+    "5": [
+      25,
+      15,
+      25
+    ],
+    "12": [
+      53,
+      47,
+      47,
+      53
+    ]
+  },
+  "themeTextureOpacity": {
+    "13": 0.25,
+    "5-12": 0.5
+  }
+}

@@ -65,20 +65,23 @@ Friend Module ModSecret
     Public ColorHue As Integer = 210, ColorSat As Integer = 85, ColorLightAdjust As Integer = 0, ColorHueTopbarDelta As OneOf(Of Integer, Integer()) = 0
     Public ThemeDontClick As Integer = 0
 
+    '配色参数参考公开快照实现：https://github.com/TomorrowX6/PCL-Snapshot/blob/d867f395b2b79939127b95e873e2c2c6113cb53f/PCL/ModSecret.cs#L576
     Private ReadOnly ThemePalettes As Integer(,) = {
         {210, 85, 0, 0},  '龙猫蓝
-        {175, 70, 0, 0},  '甜柠青
-        {125, 65, 0, 0},  '小草绿
-        {50, 80, 0, 0},   '菠萝黄
-        {28, 45, -3, 0},  '橡木棕
-        {210, 0, -10, 0}, '玄素黑
-        {330, 65, 0, 0},  '铁杆粉
-        {275, 60, 0, 0},  '神秘紫
-        {42, 70, -2, 0},  '秋仪金
-        {24, 85, 0, 0},   '活跃橙
-        {0, 75, 0, 0},    '跳票红
-        {225, 90, -4, 18} '极客蓝
+        {180, 50, 0, 0},  '甜柠青
+        {130, 40, 0, 0},  '小草绿
+        {75, 50, 0, 0},   '菠萝黄
+        {35, 30, 0, 0},   '橡木棕
+        {225, 10, -20, 0}, '玄素黑
+        {345, 70, 15, 0}, '铁杆粉
+        {285, 50, 0, 0},  '神秘紫
+        {50, 65, 10, 0},  '秋仪金
+        {25, 75, 5, 0},   '活跃橙
+        {5, 70, -5, 0},   '跳票红
+        {230, 60, -5, 0}  '极客蓝
     }
+    Private IsThemeColorfulLoaded As Boolean = False
+    Private ColorHueDelta As Integer = 1
 
     Public Sub ThemeRefresh(Optional NewTheme As Integer = -1)
         If Not RunInUi() Then
@@ -94,16 +97,22 @@ Friend Module ModSecret
                 ColorSat = ThemePalettes(ThemeNow, 1)
                 ColorLightAdjust = ThemePalettes(ThemeNow, 2)
                 ColorHueTopbarDelta = ThemePalettes(ThemeNow, 3)
+                If ThemeNow = 2 Then ColorHueTopbarDelta = New Integer() {5, -5, 5}
             ElseIf ThemeNow = 12 Then
-                ColorHue = CInt((GetTimeMs() \ 80L) Mod 360L)
-                ColorSat = 80
+                If Not IsThemeColorfulLoaded Then
+                    IsThemeColorfulLoaded = True
+                    ColorHue = RandomInteger(0, 359)
+                    ColorHueDelta = (RandomInteger(0, 1) * 2 - 1) * 4
+                End If
+                ColorHue = (ColorHue + ColorHueDelta + 360) Mod 360
+                ColorSat = 45
                 ColorLightAdjust = 0
-                ColorHueTopbarDelta = 45
+                ColorHueTopbarDelta = 0
             ElseIf ThemeNow = 13 Then
-                ColorHue = CInt((GetTimeMs() \ 40L) Mod 360L)
-                ColorSat = 75
+                ColorHue = 290
+                ColorSat = 50
                 ColorLightAdjust = 0
-                ColorHueTopbarDelta = New Integer() {0, 120, 240}
+                ColorHueTopbarDelta = New Integer() {-30, 10, 50}
             Else
                 ColorHue = Settings.Get(Of Integer)("UiLauncherHue").Clamp(0, 360) Mod 360
                 ColorSat = Settings.Get(Of Integer)("UiLauncherSat").Clamp(0, 100)
@@ -154,12 +163,25 @@ Friend Module ModSecret
             If FrmMain Is Nothing OrElse Not FrmMain.IsLoaded Then Return
             '顶部条背景
             Dim Brush = New LinearGradientBrush With {.EndPoint = New Point(1, 0), .StartPoint = New Point(0, 0)}
-            Dim Deltas = ColorHueTopbarDelta.Switch(Function(d) New Integer() {-d, 0, d}, Function(d) d)
-            Brush.GradientStops.Add(New GradientStop With {.Offset = 0, .Color = New MyColor().FromHSL2(ColorHue + Deltas(0), ColorSat, 48 + ColorLightAdjust)})
-            Brush.GradientStops.Add(New GradientStop With {.Offset = 0.5, .Color = New MyColor().FromHSL2(ColorHue + Deltas(1), ColorSat, 54 + ColorLightAdjust)})
-            Brush.GradientStops.Add(New GradientStop With {.Offset = 1, .Color = New MyColor().FromHSL2(ColorHue + Deltas(2), ColorSat, 48 + ColorLightAdjust)})
+            If ThemeNow = 5 Then
+                Brush.GradientStops.Add(New GradientStop With {.Offset = 0, .Color = New MyColor().FromHSL2(ColorHue, ColorSat, 25)})
+                Brush.GradientStops.Add(New GradientStop With {.Offset = 0.5, .Color = New MyColor().FromHSL2(ColorHue, ColorSat, 15)})
+                Brush.GradientStops.Add(New GradientStop With {.Offset = 1, .Color = New MyColor().FromHSL2(ColorHue, ColorSat, 25)})
+            ElseIf ThemeNow = 12 Then
+                Brush.GradientStops.Add(New GradientStop With {.Offset = 0, .Color = New MyColor().FromHSL2(ColorHue - 21, ColorSat, 53 + ColorLightAdjust)})
+                Brush.GradientStops.Add(New GradientStop With {.Offset = 0.33, .Color = New MyColor().FromHSL2(ColorHue - 7, ColorSat, 47 + ColorLightAdjust)})
+                Brush.GradientStops.Add(New GradientStop With {.Offset = 0.67, .Color = New MyColor().FromHSL2(ColorHue + 7, ColorSat, 47 + ColorLightAdjust)})
+                Brush.GradientStops.Add(New GradientStop With {.Offset = 1, .Color = New MyColor().FromHSL2(ColorHue + 21, ColorSat, 53 + ColorLightAdjust)})
+            Else
+                Dim Deltas = ColorHueTopbarDelta.Switch(Function(d) New Integer() {-d, 0, d}, Function(d) d)
+                Brush.GradientStops.Add(New GradientStop With {.Offset = 0, .Color = New MyColor().FromHSL2(ColorHue + Deltas(0), ColorSat, 48 + ColorLightAdjust)})
+                Brush.GradientStops.Add(New GradientStop With {.Offset = 0.5, .Color = New MyColor().FromHSL2(ColorHue + Deltas(1), ColorSat, 54 + ColorLightAdjust)})
+                Brush.GradientStops.Add(New GradientStop With {.Offset = 1, .Color = New MyColor().FromHSL2(ColorHue + Deltas(2), ColorSat, 48 + ColorLightAdjust)})
+            End If
             FrmMain.PanTitle.Background = Brush
-            FrmMain.PanTitle.Background.Freeze()
+            If ThemeNow <> 12 Then FrmMain.PanTitle.Background.Freeze()
+            FrmMain.ImgTitle.Source = If(ThemeNow >= 5 AndAlso ThemeNow <= 13, $"{PathImage}Themes/{ThemeNow}.png", Nothing)
+            FrmMain.ImgTitle.Opacity = If(ThemeNow = 13, 0.25, 0.5)
             '主页面背景
             If Settings.Get(Of Boolean)("UiBackgroundColorful") Then
                 Brush = New LinearGradientBrush With {.EndPoint = New Point(0.1, 1), .StartPoint = New Point(0.9, 0)}

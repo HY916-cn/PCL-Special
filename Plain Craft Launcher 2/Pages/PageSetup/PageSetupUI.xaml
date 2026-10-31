@@ -73,7 +73,7 @@
                             <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="7" 
                                               Grid.Column="4" Grid.Row="1" Text="神秘紫" x:Name="RadioLauncherTheme7" ToolTip="紫色配色" />
                             <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="13" 
-                                              Grid.Column="5" Grid.Row="1" Text="欧皇彩" x:Name="RadioLauncherTheme13" ToolTip="动态多色渐变" />
+                                              Grid.Column="5" Grid.Row="1" Text="欧皇彩" x:Name="RadioLauncherTheme13" ToolTip="紫粉色三段渐变" />
                             <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="8" 
                                               Grid.Column="1" Grid.Row="2" Text="秋仪金" x:Name="RadioLauncherTheme8" ToolTip="金色配色" />
                             <local:MyRadioBox local:SettingService.Key="UiLauncherTheme" local:SettingService.Value="9" 

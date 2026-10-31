@@ -149,19 +149,39 @@ public static class PclSmokeRunner {
             Require(ThemeField(theme, "ColorHue") == 190 && PrimaryThemeColor() != customColor,
                 "Refreshing the same custom theme did not apply the changed hue.");
 
-            foreach (int id in new int[] { 12, 13 }) {
+            // Reference values cross-checked against two published snapshot implementations.
+            int[,] reference = new int[,] {
+                {210,85,0}, {180,50,0}, {130,40,0}, {75,50,0},
+                {35,30,0}, {225,10,-20}, {345,70,15}, {285,50,0},
+                {50,65,10}, {25,75,5}, {5,70,-5}, {230,60,-5}
+            };
+            for (int id = 0; id < 12; id++) {
                 Invoke(theme, "ThemeRefresh", id);
-                int firstHue = ThemeField(theme, "ColorHue");
-                Thread.Sleep(240);
-                Invoke(theme, "ThemeRefresh", id);
-                Require(ThemeField(theme, "ColorHue") != firstHue,
-                    "Refreshing the same animated theme did not advance its hue: " + id);
-                PrimaryThemeColor();
+                Require(ThemeField(theme, "ColorHue") == reference[id,0] &&
+                    ThemeField(theme, "ColorSat") == reference[id,1] &&
+                    ThemeField(theme, "ColorLightAdjust") == reference[id,2],
+                    "Theme palette differs from the published snapshot reference: " + id);
             }
+            Invoke(theme, "ThemeRefresh", 2);
+            object greenDelta = theme.GetField("ColorHueTopbarDelta", StaticMembers).GetValue(null);
+            Require(((int[])greenDelta.GetType().GetMethod("AsT2").Invoke(greenDelta, null)).SequenceEqual(new int[] {5,-5,5}),
+                "Green theme gradient differs from the published reference.");
+            Invoke(theme, "ThemeRefresh", 13);
+            Require(ThemeField(theme, "ColorHue") == 290 && ThemeField(theme, "ColorSat") == 50 && ThemeField(theme, "ColorLightAdjust") == 0,
+                "Rainbow gradient palette differs from the published reference.");
+            object rainbowDelta = theme.GetField("ColorHueTopbarDelta", StaticMembers).GetValue(null);
+            Require(((int[])rainbowDelta.GetType().GetMethod("AsT2").Invoke(rainbowDelta, null)).SequenceEqual(new int[] {-30,10,50}),
+                "Rainbow theme gradient differs from the published reference.");
+            Invoke(theme, "ThemeRefresh", 12);
+            int firstHue = ThemeField(theme, "ColorHue");
+            Invoke(theme, "ThemeRefresh", -1);
+            int hueChange = (ThemeField(theme, "ColorHue") - firstHue + 360) % 360;
+            Require((hueChange == 4 || hueChange == 356) && ThemeField(theme, "ColorSat") == 45,
+                "Color cycling does not follow the published four-degree step.");
             themeResult = new Dictionary<string, object> {
                 { "passed", true }, { "themeCount", 15 }, { "distinctStaticPrimaryColors", staticColors.Count },
                 { "invalidIdsRejected", true }, { "customSettingsApplied", true },
-                { "sameCustomThemeRefresh", true }, { "animatedThemeIds", new int[] { 12, 13 } }
+                { "sameCustomThemeRefresh", true }, { "animatedThemeIds", new int[] { 12 } }, { "snapshotPaletteReference", true }, { "fixedGradientThemeId", 13 }
             };
             Console.WriteLine("PASS: 15 themes, 12 distinct static colors, custom color changes, and animated hue refresh.");
         } finally {
@@ -317,7 +337,7 @@ if ($env:GITHUB_ACTIONS -eq 'true') {
             }
             Start-Sleep -Milliseconds 250
         }
-        if (-not $loaded) { throw 'Launcher did not display its main window and complete startup within 30 seconds.' }
+        if (-not $loaded) { throw ("Launcher startup check failed. Title='{0}', Handle={1}, HasExited={2}." -f $gui.MainWindowTitle, $gui.MainWindowHandle, $gui.HasExited) }
         $report | Add-Member -NotePropertyName guiStartup -NotePropertyValue 'main window displayed and third startup stage completed; EULA left untouched'
     } finally {
         if (-not $gui.HasExited) { $gui.Kill(); $gui.WaitForExit() }

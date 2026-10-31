@@ -26,7 +26,7 @@ jobs:
         shell: pwsh
         run: ./tools/Build.ps1
       - name: Verify Windows download and update behavior
-        shell: powershell
+        shell: pwsh
         run: ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL-HY916-Fixed-2.99.0.1.exe -WorkDirectory ./artifacts/smoke
       - name: Upload packages and verification
         if: always()

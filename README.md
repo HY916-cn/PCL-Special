@@ -24,13 +24,15 @@ Minecraft 原版下载不依赖这两个值。源码未包含官方联机配置�
 
 源码随 `PCL-HY916-Fixed-2.99.0.1-Source.zip` 提供，包含固定版本的 MeloongCore。
 源码及修改保留仓库中的 `LICENCE`、正版购买提示、原作者署名与赞助链接。
-特别版本由 Haoyu Huang 开发，关于页面使用其提供的头像。主题页面的全部 15 项可选，包含两种动态配色和自定义调色。
+特别版本由 Haoyu Huang 开发，关于页面使用其提供的头像。主题页面的全部 15 项可选，色值和渐变参考公开快照版本的主题实现，包含“滑稽彩”动态轮色、“欧皇彩”固定三段渐变和自定义调色。
 
-Windows 安装 Visual Studio 2022 Build Tools（.NET 桌面开发、.NET Framework 4.8 SDK）及支持 C# 13 的 .NET SDK 后执行：
+主题参数交叉核对来源：[快照版主题实现](https://github.com/TomorrowX6/PCL-Snapshot/blob/d867f395b2b79939127b95e873e2c2c6113cb53f/PCL/ModSecret.cs#L576)、[第二份公开实现](https://github.com/oliverlacey426/PCLCRK/blob/51def4747a2437e9d2b35d7810e3727167fc461b/PCL2_Source_CS/Source/PCL/ModSecret.cs#L474)。
+
+Windows 安装 Visual Studio 2022 Build Tools（.NET 桌面开发、.NET Framework 4.8 SDK）、PowerShell 7 及支持 C# 13 的 .NET SDK 后执行：
 
 ```powershell
 ./tools/Build.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL-HY916-Fixed-2.99.0.1.exe -WorkDirectory ./artifacts/smoke
+pwsh -NoProfile -File ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL-HY916-Fixed-2.99.0.1.exe -WorkDirectory ./artifacts/smoke
 ```
 
 `dist` 目录包含程序、Windows 压缩包、源码压缩包与 SHA-256 校验文件。
