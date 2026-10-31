@@ -125,6 +125,10 @@ public static class PclSmokeRunner {
             try { Invoke(pcl.GetType("PCL.ModLaunch", true), "MsLoginStep1New", new object[] { null }); }
             catch (Exception ex) { rejected = ex.Message.Contains("Client ID"); }
             Require(rejected, "Missing Microsoft Client ID was not rejected before authentication.");
+            rejected = false;
+            try { Invoke(pcl.GetType("PCL.ModLaunch", true), "MsLoginStep1Refresh", "smoke-test-not-a-token"); }
+            catch (Exception ex) { rejected = ex.Message.Contains("Client ID"); }
+            Require(rejected, "Missing Microsoft Client ID was not rejected before refresh.");
         } finally { clientId.SetValue(null, savedClientId); }
     }
 
@@ -253,7 +257,68 @@ public static class PclSmokeRunner {
         Console.WriteLine("PASS: original toolbox entries, daily score, cave text, custom/preset hints, and prank color effects.");
     }
 
+    private static void CheckMicrosoftPollingRules() {
+        Type login = pcl.GetType("PCL.MyMsgLogin", true);
+        MethodInfo initial = login.GetMethod("GetPollingIntervalSeconds", StaticMembers);
+        Require(Convert.ToInt32(initial.Invoke(null, new object[] { null })) == 5, "Missing polling interval must default to five seconds.");
+        Require(Convert.ToInt32(initial.Invoke(null, new object[] { 0 })) == 5, "Invalid polling interval must use the default.");
+        Require(Convert.ToInt32(initial.Invoke(null, new object[] { 7 })) == 7, "Microsoft polling interval was not preserved.");
+        Require(Convert.ToInt32(Invoke(login, "GetNextPollingIntervalSeconds", 7, "authorization_pending")) == 7, "Pending must preserve the polling interval.");
+        Require(Convert.ToInt32(Invoke(login, "GetNextPollingIntervalSeconds", 7, "slow_down")) == 12, "slow_down must permanently add five seconds.");
+        Require(Convert.ToInt32(Invoke(login, "GetNextPollingIntervalSeconds", 7, "timeout")) == 14, "Timeout must back off polling.");
+        Require(Convert.ToInt64(Invoke(login, "GetPollingDelayMilliseconds", 5, 2000L)) == 3000L, "Polling must wait for the remaining interval.");
+        Require(Convert.ToInt64(Invoke(login, "GetPollingDelayMilliseconds", 5, 6000L)) == 0L, "Completed interval must not delay again.");
+        Require(!(bool)Invoke(login, "HasDeviceCodeExpired", 1000L, 900, 900999L), "Device code expired too early.");
+        Require((bool)Invoke(login, "HasDeviceCodeExpired", 1000L, 900, 901000L), "Device code expiry deadline was ignored.");
+        Type launch = pcl.GetType("PCL.ModLaunch", true);
+        Require((string)Invoke(launch, "MsLoginGetOAuthError", "{\"error\":\"invalid_grant\"}") == "invalid_grant", "OAuth error was not parsed.");
+        Require((string)Invoke(launch, "MsLoginGetOAuthError", "not JSON") == "", "Legacy OAuth error text was not supported.");
+        Console.WriteLine("PASS: Microsoft polling intervals, slowdown, timeout backoff, device-code expiry, and OAuth error parsing.");
+    }
+
+    private static Dictionary<string, object> CheckMicrosoftDeviceCode() {
+        Type secret = pcl.GetType("PCL.ModSecret", true);
+        string clientId = (string)secret.GetField("OAuthClientId", StaticMembers).GetValue(null);
+        Require(clientId == "fe72edc2-3a6f-4280-90e8-e2beb64ce7e1", "Public edition Client ID was not configured by default.");
+        Type network = pcl.GetType("PCL.ModNet", true);
+        MethodInfo request = network.GetMethod("NetRequestByClient", StaticMembers);
+        object post = request.GetParameters()[1].ParameterType.GetProperty("Post", StaticMembers).GetValue(null, null);
+        string deviceEndpoint = "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
+        string tokenEndpoint = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
+        string body = "client_id=" + Uri.EscapeDataString(clientId) + "&scope=XboxLive.signin%20offline_access";
+        string response = (string)Invoke(network, "NetRequestByClient", deviceEndpoint, post, body,
+            "application/x-www-form-urlencoded", "*/*", 20000, null, true, null, false, false);
+        JavaScriptSerializer serializer = new JavaScriptSerializer();
+        Dictionary<string, object> device = serializer.Deserialize<Dictionary<string, object>>(response);
+        Require(device.ContainsKey("device_code") && !String.IsNullOrWhiteSpace((string)device["device_code"]),
+            "Microsoft did not issue a device code.");
+        int interval = device.ContainsKey("interval") ? Convert.ToInt32(device["interval"]) : 5;
+        Require(Convert.ToInt32(device["expires_in"]) > 0 && interval > 0, "Invalid device code lifetime or polling interval.");
+        // Never display, log, persist, or authorize either returned code in this test.
+        Thread.Sleep(interval * 1000);
+        bool pending = false;
+        try {
+            Invoke(network, "NetRequestByClient", tokenEndpoint, post,
+                "client_id=" + Uri.EscapeDataString(clientId) + "&grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=" + Uri.EscapeDataString((string)device["device_code"]),
+                "application/x-www-form-urlencoded", "*/*", 20000, null, true, null, false, false);
+        } catch (Exception ex) {
+            PropertyInfo payload = ex.GetType().GetProperty("Response");
+            if (payload != null) {
+                Dictionary<string, object> error = serializer.Deserialize<Dictionary<string, object>>((string)payload.GetValue(ex, null));
+                pending = error.ContainsKey("error") && (string)error["error"] == "authorization_pending";
+            }
+            if (!pending) throw new InvalidOperationException("Microsoft token endpoint did not return the expected authorization_pending result.");
+        }
+        Require(pending, "Device authorization must remain pending without account sign-in.");
+        Console.WriteLine("PASS: Microsoft issued a device code and token polling remained authorization_pending without account access.");
+        return new Dictionary<string, object> {
+            { "deviceCodeIssued", true }, { "tokenPollingPending", true }, { "pollIntervalSeconds", interval }, { "pollingRules", "interval, slow_down, timeout backoff and local expiry verified" },
+            { "accountAuthorizationPerformed", false }, { "endToEndAccountLoginVerified", false }, { "codesPersisted", false }
+        };
+    }
+
     private static void DownloadTest(string work) {
+        Dictionary<string, object> loginResult = CheckMicrosoftDeviceCode();
         Type download = pcl.GetType("PCL.ModDownload", true);
         Type network = pcl.GetType("PCL.ModNet", true);
         string jsonUrl = (string)Invoke(download, "DlClientListGet", "1.0");
@@ -285,7 +350,7 @@ public static class PclSmokeRunner {
             { "settingsStorage", "isolated default settings in local Setup.ini" },
             { "downloadRestriction", false }, { "updateMethods", "verified no-op IL" },
             { "fixedSettings", "Set and Reset preserve updates=3, announcements=2, telemetry=false" },
-            { "themes", themeResult }, { "toolbox", toolboxResult }
+            { "themes", themeResult }, { "toolbox", toolboxResult }, { "microsoftLogin", loginResult }
         };
         File.WriteAllText(Path.Combine(work, "smoke-result.json"), serializer.Serialize(report));
         Console.WriteLine("PASS: PCL resolved Minecraft 1.0, downloaded JSON and client JAR, and verified size/SHA-1.");
@@ -302,6 +367,7 @@ public static class PclSmokeRunner {
             Directory.CreateDirectory(temp);
             Environment.SetEnvironmentVariable("TEMP", temp);
             Environment.SetEnvironmentVariable("TMP", temp);
+            Environment.SetEnvironmentVariable("PCL_MS_CLIENT_ID", null);
             pcl = Assembly.LoadFrom(args[0]);
             resources = new ResourceManager("PCL.Resources", pcl);
             AppDomain.CurrentDomain.AssemblyResolve += ResolveLibrary;
@@ -330,6 +396,7 @@ public static class PclSmokeRunner {
             CheckThemes();
             Console.WriteLine("VERIFY: original toolbox behavior");
             CheckToolbox(work);
+            CheckMicrosoftPollingRules();
             Exception failure = null;
             bool finished = false;
             Thread worker = new Thread(delegate() {

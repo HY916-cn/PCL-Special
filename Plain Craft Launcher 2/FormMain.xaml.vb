@@ -454,7 +454,7 @@ Public Class FormMain
             End Try
             '开源版本提示
             If Not Settings.Get(Of Boolean)("HintSpecialEditionWelcome") Then
-                MyMsgBox($"由 HaoyuHuang 基于 Plain Craft Launcher 独立开发。{vbCrLf}{vbCrLf}支持 Minecraft 下载、全部 15 个配色主题与百宝箱。{vbCrLf}启动器自动更新与远程配置已关闭。{vbCrLf}{vbCrLf}微软正版登录的配置方法，请查看随包使用说明。{vbCrLf}原作者：龙腾猫跃，赞助链接见「关于与鸣谢」。", "PCL HaoyuHuang 特别版")
+                MyMsgBox($"由 HaoyuHuang 基于 Plain Craft Launcher 独立开发。{vbCrLf}{vbCrLf}支持 Minecraft 下载、全部 15 个配色主题与百宝箱。{vbCrLf}启动器自动更新与远程配置已关闭。{vbCrLf}{vbCrLf}微软正版登录请在系统浏览器中完成设备代码授权。{vbCrLf}原作者：龙腾猫跃，赞助链接见「关于与鸣谢」。", "PCL HaoyuHuang 特别版")
                 Settings.Set("HintSpecialEditionWelcome", True)
             End If
         End Sub, "初始化", ThreadPriority.Lowest)

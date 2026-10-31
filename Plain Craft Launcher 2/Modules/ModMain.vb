@@ -335,6 +335,7 @@ EndHint:
                 '弹窗中
                 FrmMain.PanMsg.Visibility = Visibility.Visible
             ElseIf WaitingMyMsgBox.TryDequeue(TargetMsgBox) Then
+                If TargetMsgBox.IsExited Then Return
                 '没有弹窗，显示一个等待的弹窗
                 FrmMain.PanMsg.Visibility = Visibility.Visible
                 Select Case TargetMsgBox.Type

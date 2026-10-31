@@ -16,15 +16,21 @@
 功能所需的联网保留：Minecraft 版本列表、游戏文件、组件、在线主页及百宝箱。遥测与匿名数据上报已移除。
 本版本使用独立的注册表、默认缓存目录和单实例标识。请保留独立文件夹，以隔离目录内的配置文件。
 
-这是从公开源码构建的版本。微软登录需要你自行申请并通过环境变量 `PCL_MS_CLIENT_ID` 提供 Client ID；
-CurseForge 资源需要通过环境变量 `PCL_CURSEFORGE_API_KEY` 提供 API Key。设置后重新打开启动器。
-Minecraft 原版下载不依赖这两个值。联机功能所需的官方远程配置未随公开源码提供。
+微软正版登录默认采用公开发行版使用的应用 Client ID，点击“正版”后在微软官方网站完成设备代码授权。
+CurseForge 资源仍需通过环境变量 `PCL_CURSEFORGE_API_KEY` 提供 API Key，设置后重新打开启动器。
+Minecraft 原版下载不依赖 CurseForge API Key。联机功能所需的官方远程配置未随公开源码提供。
 
 启动器不会自行接收或安装后续版本。远端下载服务、API 或文件地址未来若发生变化，仍可能需要手动维护。
 
-## 微软正版登录配置
+## 微软正版登录
 
-此源码构建未内置应用 Client ID。应用配置由启动器开发者完成一次；获得可用的应用授权并内置 Client ID 后，普通使用者只需使用拥有 Minecraft Java 版的微软个人账号登录。
+默认 Client ID 为 `fe72edc2-3a6f-4280-90e8-e2beb64ce7e1`，已静态核对公开发行版 2.99.0.1 与[公开快照实现](https://github.com/TomorrowX6/PCL-Snapshot/blob/d867f395b2b79939127b95e873e2c2c6113cb53f/PCL/ModSecret.cs#L380)使用相同值。它是原版的应用注册标识；微软授权界面展示该应用的注册信息。
+
+在启动页选择“正版”，点击登录并在自动打开的微软网页输入设备代码，使用拥有 Minecraft Java 版的微软个人账号授权。随后由 Microsoft、Xbox 与 Minecraft 服务完成账号和游戏资格验证。设备码只在登录弹窗中显示，不写入日志。
+
+已验证默认应用可以向微软接口申请设备登录码。设备码签发不代表完整账号登录成功，当前包尚未完成真实账号端到端登录验证。应用所有者和 Microsoft/Minecraft 服务仍可调整或撤销该应用的访问权限。
+
+如果你希望使用自己注册的应用，可通过 `PCL_MS_CLIENT_ID` 覆盖默认值。更换应用后应在启动器中退出账号并重新登录，旧应用的刷新令牌不能用于新应用。自有应用配置如下：
 
 1. 在 [Microsoft Entra 应用注册](https://entra.microsoft.com/)注册应用，账号类型包含“个人 Microsoft 账号”。当前代码使用 `/consumers`。
 2. 在 Authentication 的 Advanced settings 中启用 **Allow public client flows**。本版本使用设备代码流程，无需 Client Secret 或回调地址。
@@ -35,7 +41,7 @@ Minecraft 原版下载不依赖这两个值。联机功能所需的官方远程�
 [Environment]::SetEnvironmentVariable("PCL_MS_CLIENT_ID", (Read-Host "输入自己的应用 Client ID"), "User")
 ```
 
-Client ID 是应用标识，不是微软账号密码。当前包没有完成真实账号的端到端登录验证；应用授权及游戏所有权仍由 Microsoft/Minecraft 服务核验。
+Client ID 是应用标识，不是微软账号密码；此设备代码流程不需要 Client Secret。
 
 参考：[微软桌面应用配置](https://learn.microsoft.com/en-us/entra/identity-platform/scenario-desktop-app-configuration)、[设备代码协议](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code)。
 

@@ -591,6 +591,7 @@ Relogin:
         Dim Result = MsLoginStep6(LoginResult.AccessToken)
         Data.Progress = 0.98
         '输出登录结果
+        If Data.IsCanceled Then Throw New OperationCanceledException
         Settings.Set("CacheMsV2OAuthRefresh", OAuthRefreshToken)
         Settings.Set("CacheMsV2Access", LoginResult.AccessToken)
         Settings.Set("CacheMsV2Uuid", Result.UUID)
@@ -880,52 +881,77 @@ LoginFinish:
 
     '微软登录步骤 1，原始登录：获取 DeviceCode 并开启登录网页
     Private Function MsLoginStep1New(Data As LoaderTask(Of McLoginMs, McLoginResult)) As (OAuthAccessToken As String, OAuthRefreshToken As String)
-        If String.IsNullOrWhiteSpace(OAuthClientId) Then Throw New Exception("$微软正版登录尚未配置。请按照随包使用说明设置应用 Client ID，并重新打开特别版。")
+        Dim FlowClientId = OAuthClientId
+        If String.IsNullOrWhiteSpace(FlowClientId) Then Throw New Exception("$微软正版登录尚未配置。请按照随包使用说明设置应用 Client ID，并重新打开特别版。")
         '参考：https://learn.microsoft.com/zh-cn/entra/identity-platform/v2-oauth2-device-code
 
         '初始请求
 Retry:
         McLaunchLog("开始微软登录步骤 1/6（原始登录）")
-        Dim PrepareJson As JObject = NetRequestByClientRetry("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode", HttpMethod.Post,
-            Content:=$"client_id={OAuthClientId}&tenant=/consumers&scope=XboxLive.signin%20offline_access",
-            ContentType:="application/x-www-form-urlencoded", RequireJson:=True).DeserializeJson()
+        Dim StartedAt = GetTimeMs()
+        Dim PrepareJson As JObject
+        Try
+            PrepareJson = NetRequestByClientRetry("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode", HttpMethod.Post,
+                Content:=$"client_id={StringUtils.FormUrlEscape(FlowClientId)}&tenant=/consumers&scope=XboxLive.signin%20offline_access",
+                ContentType:="application/x-www-form-urlencoded", RequireJson:=True).DeserializeJson()
+        Catch ex As HttpRequestCodeException
+            Dim ErrorCode = MsLoginGetOAuthError(ex.Response)
+            If ErrorCode = "invalid_client" OrElse ErrorCode = "unauthorized_client" Then
+                Throw New Exception("$微软登录应用配置无效或未获授权。请检查应用 Client ID、个人 Microsoft 账号支持及公共客户端流程设置。")
+            End If
+            Throw
+        End Try
+        PrepareJson("__pcl_client_id") = FlowClientId
+        PrepareJson("__pcl_device_code_started_at") = StartedAt
         McLaunchLog("网页登录地址：" & PrepareJson("verification_uri").ToString)
 
         '弹窗
         Dim Converter As New MyMsgBoxConverter With {.Content = PrepareJson, .ForceWait = True, .Type = MyMsgBoxType.Login}
         WaitingMyMsgBox.Enqueue(Converter)
-        While Converter.Result Is Nothing
-            Thread.Sleep(100)
-        End While
-        If TypeOf Converter.Result Is RestartException Then
-            If MyMsgBox($"请在登录时选择 {vbLQ}其他登录方法{vbRQ}，然后选择 {vbLQ}使用我的密码{vbRQ}。{vbCrLf}如果没有该选项，请选择 {vbLQ}设置密码{vbRQ}，设置完毕后再登录。",
-                "需要使用密码登录", "重新登录", "设置密码", "取消",
-                Button2Action:=Sub() OpenWebsite("https://account.live.com/password/Change")) = 1 Then
-                GoTo Retry
+        Try
+            While Converter.Result Is Nothing
+                If Data.IsCanceled Then Throw New OperationCanceledException
+                Thread.Sleep(100)
+            End While
+            If Data.IsCanceled Then Throw New OperationCanceledException
+            If TypeOf Converter.Result Is RestartException Then
+                If MyMsgBox($"请在登录时选择 {vbLQ}其他登录方法{vbRQ}，然后选择 {vbLQ}使用我的密码{vbRQ}。{vbCrLf}如果没有该选项，请选择 {vbLQ}设置密码{vbRQ}，设置完毕后再登录。",
+                    "需要使用密码登录", "重新登录", "设置密码", "取消",
+                    Button2Action:=Sub() OpenWebsite("https://account.live.com/password/Change")) = 1 Then
+                    GoTo Retry
+                Else
+                    Throw New OperationCanceledException
+                End If
+            ElseIf TypeOf Converter.Result Is Exception Then
+                Throw CType(Converter.Result, Exception)
             Else
-                Throw New OperationCanceledException
+                Return (Converter.Result(0), Converter.Result(1))
             End If
-        ElseIf TypeOf Converter.Result Is Exception Then
-            Throw CType(Converter.Result, Exception)
-        Else
-            Return (Converter.Result(0), Converter.Result(1))
-        End If
+        Finally
+            SyncLock Converter
+                Converter.IsExited = True
+                If Converter.Result Is Nothing Then Converter.Result = New OperationCanceledException
+            End SyncLock
+        End Try
     End Function
     '微软登录步骤 1，刷新登录：从 OAuth Code 或 OAuth RefreshToken 获取 {OAuth AccessToken, OAuth RefreshToken}
     Private Function MsLoginStep1Refresh(Code As String) As (OAuthAccessToken As String, OAuthRefreshToken As String)
+        If String.IsNullOrWhiteSpace(OAuthClientId) Then Throw New Exception("$微软正版登录尚未配置。请按照随包使用说明设置应用 Client ID，并重新打开特别版。")
         McLaunchLog("开始微软登录步骤 1/6（刷新登录）")
 
         Dim Result As String
         Try
-            Result = NetRequestByClientMultiple("https://login.live.com/oauth20_token.srf", HttpMethod.Post,
-                Content:=$"client_id={OAuthClientId}&refresh_token={StringUtils.FormUrlEscape(Code)}&grant_type=refresh_token&scope=XboxLive.signin%20offline_access",
+            Result = NetRequestByClientRetry("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", HttpMethod.Post,
+                Content:=$"client_id={StringUtils.FormUrlEscape(OAuthClientId)}&refresh_token={StringUtils.FormUrlEscape(Code)}&grant_type=refresh_token&scope=XboxLive.signin%20offline_access",
                 ContentType:="application/x-www-form-urlencoded",
-                Headers:={{"Accept-Language", "en-US,en;q=0.5"}, {"X-Requested-With", "XMLHttpRequest"}},
-                ThreadCount:=2)
+                Headers:={{"Accept-Language", "en-US,en;q=0.5"}, {"X-Requested-With", "XMLHttpRequest"}})
         Catch ex As HttpRequestCodeException
             '修改错误列表时，同时检查 MyMsgLogin.xaml.vb 中的对应代码
-            Dim Response = ex.Response
-            If Response.ContainsIgnoreCase("must sign in again") OrElse Response.ContainsIgnoreCase("password expired") OrElse
+            Dim Response = If(ex.Response, "")
+            Dim ErrorCode = MsLoginGetOAuthError(Response)
+            If ErrorCode = "invalid_client" OrElse ErrorCode = "unauthorized_client" Then
+                Throw New Exception("$微软登录应用配置无效或未获授权。请检查应用 Client ID、个人 Microsoft 账号支持及公共客户端流程设置。")
+            ElseIf ErrorCode = "invalid_grant" OrElse Response.ContainsIgnoreCase("must sign in again") OrElse Response.ContainsIgnoreCase("password expired") OrElse
                (Response.Contains("refresh_token") AndAlso Response.ContainsIgnoreCase("is not valid")) OrElse '#269
                Response.ContainsIgnoreCase("expired") Then '#8611
                 Return ("Relogin", "")
@@ -944,6 +970,15 @@ Retry:
         Dim AccessToken As String = ResultJson("access_token").ToString
         Dim RefreshToken As String = ResultJson("refresh_token").ToString
         Return (AccessToken, RefreshToken)
+    End Function
+    Private Function MsLoginGetOAuthError(Response As String) As String
+        If String.IsNullOrWhiteSpace(Response) Then Return ""
+        Try
+            Dim Result = JObject.Parse(Response)
+            Return If(Result("error")?.ToString(), "")
+        Catch ex As Newtonsoft.Json.JsonException
+            Return ""
+        End Try
     End Function
     '微软登录步骤 2：从 OAuth AccessToken 获取 XBLToken
     Private Function MsLoginStep2(AccessToken As String) As String
@@ -1028,6 +1063,9 @@ Retry:
                 Throw New Exception("$登录尝试太过频繁，请等待几分钟后再试！")
             ElseIf ex.StatusCode = HttpStatusCode.Forbidden Then
                 Logger.Warn(ex, "微软登录第 4 步汇报 403")
+                If ex.Response?.ContainsIgnoreCase("Invalid app registration") Then
+                    Throw New Exception("$Minecraft Services 尚未授权当前应用 Client ID。请检查应用的 Minecraft API 审核状态，详见 https://aka.ms/AppRegInfo。")
+                End If
                 Throw New Exception("$当前 IP 的登录尝试异常。" & vbCrLf & "如果你使用了 VPN 或加速器，请把它们关掉或更换节点后再试！")
             ElseIf ex.StatusCode = HttpStatusCode.ServiceUnavailable Then
                 Logger.Warn(ex, "微软登录第 4 步汇报 503")

@@ -6,8 +6,10 @@ Friend Module ModSecret
     Public Const VersionBranchMain As String = "HY916Fixed"
     '在开源版的注册表与常规版的注册表隔离，以防数据冲突
     Public Const RegFolder As String = "PCLHY916Fixed"
-    '用于微软登录的 ClientId
-    Public OAuthClientId As String = If(Environment.GetEnvironmentVariable("PCL_MS_CLIENT_ID"), "")
+    '公开发行版的微软应用标识；可用环境变量配置其他应用。
+    Public Const DefaultOAuthClientId As String = "fe72edc2-3a6f-4280-90e8-e2beb64ce7e1"
+    Public OAuthClientId As String = If(String.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PCL_MS_CLIENT_ID")),
+                                      DefaultOAuthClientId, Environment.GetEnvironmentVariable("PCL_MS_CLIENT_ID").Trim())
     'CurseForge API Key
     Public CurseForgeAPIKey As String = If(Environment.GetEnvironmentVariable("PCL_CURSEFORGE_API_KEY"), "")
 
