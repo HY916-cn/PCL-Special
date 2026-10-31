@@ -15,7 +15,7 @@ Public Module ModBase
 #End If
 
     '版本信息
-    Public Const VersionDisplay As String = "HY916 固定版 " & VersionBaseName
+    Public Const VersionDisplay As String = "HaoyuHuang 特别版 " & VersionBaseName
 #If DEBUG Then
     Public Const BuildTypeDisplay As String = "开发版"
     Public Const BuildType As BuildTypes = BuildTypes.Debug

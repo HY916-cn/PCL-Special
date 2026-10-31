@@ -8,10 +8,10 @@ Imports System.Runtime.InteropServices
 
 '查看程序集特性的值
 
-<Assembly: AssemblyTitle("PCL HY916 固定版")>
+<Assembly: AssemblyTitle("PCL HaoyuHuang 特别版")>
 <Assembly: AssemblyDescription("第三方基于 Plain Craft Launcher 独立修改的 Minecraft 启动器")>
 <Assembly: AssemblyCompany("")>
-<Assembly: AssemblyProduct("PCL HY916 固定版")>
+<Assembly: AssemblyProduct("PCL HaoyuHuang 特别版")>
 <Assembly: AssemblyCopyright("Copyright © 成都瓜皮龙科技有限公司")>
 <Assembly: AssemblyConfiguration("PCL2 Config Mark")>
 <Assembly: ComVisible(False)>

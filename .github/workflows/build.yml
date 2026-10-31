@@ -1,4 +1,4 @@
-name: Build fixed edition
+name: Build special edition
 on:
   push:
     branches: [main]
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: fixed-edition-build
+  group: special-edition-build
   cancel-in-progress: true
 
 jobs:
@@ -27,12 +27,12 @@ jobs:
         run: ./tools/Build.ps1
       - name: Verify Windows download and update behavior
         shell: pwsh
-        run: ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL-HY916-Fixed-2.99.0.1.exe -WorkDirectory ./artifacts/smoke
+        run: ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL-HaoyuHuang-Special-2.99.0.1.exe -WorkDirectory ./artifacts/smoke
       - name: Upload packages and verification
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: PCL-HY916-Fixed-2.99.0.1
+          name: PCL-HaoyuHuang-Special-2.99.0.1
           retention-days: 30
           path: |
             dist/*

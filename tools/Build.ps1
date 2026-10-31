@@ -10,7 +10,7 @@ try {
 
     $output = [IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
     New-Item -ItemType Directory -Force $output | Out-Null
-    $name = "PCL-HY916-Fixed-2.99.0.1"
+    $name = "PCL-HaoyuHuang-Special-2.99.0.1"
     Copy-Item "Plain Craft Launcher 2/obj/Release/Plain Craft Launcher 2.exe" "$output/$name.exe"
     Copy-Item "Plain Craft Launcher 2/App.config" "$output/$name.exe.config"
     Copy-Item README.md "$output/使用说明.md"
@@ -19,7 +19,7 @@ try {
     $revision = if ($hasGit) { git rev-parse HEAD } else { ((Select-String -Path "$root/SOURCE.txt" -Pattern "^Build commit: ").Line -replace "^Build commit: ", "") }
     $coreRevision = "4c60c2962c3b50bc3fe96ed5dd9259b980173580"
     @"
-PCL HY916 固定版 2.99.0.1
+PCL HaoyuHuang 特别版 2.99.0.1
 Build commit: $revision
 Upstream: Meloong-Git/PCL 93ede5d9e638c99fcec853a9ba1eecd91ceee7f5
 MeloongCore: $coreRevision

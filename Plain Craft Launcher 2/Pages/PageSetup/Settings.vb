@@ -22,6 +22,7 @@ Public Class Settings
         New Setting("HintIndieSetup", False, Source:=Sources.Registry),
         New Setting("HintExportConfig", False, Source:=Sources.Registry),
         New Setting("HintSnapshot", False, Source:=Sources.Registry),
+        New Setting("HintSpecialEditionWelcome", False, Source:=Sources.Registry),
         New Setting("SystemEulaVersion", 0, Source:=Sources.Registry),
         New Setting("SystemCount", 0, Source:=Sources.Registry, Encrypted:=True),
         New Setting("SystemLaunchCount", 0, Source:=Sources.Registry, Encrypted:=True),
@@ -37,7 +38,7 @@ Public Class Settings
         New Setting("SystemSystemCache", "", Source:=Sources.Registry),
         New Setting("SystemSystemUpdate", 3),
         New Setting("SystemSystemActivity", 2),
-        New Setting("SystemSystemTelemetry", True, Source:=Sources.Registry),
+        New Setting("SystemSystemTelemetry", False, Source:=Sources.Registry),
         New Setting("CacheDrops", "", Source:=Sources.Registry),
         New Setting("CacheConfig", 0, Source:=Sources.Registry),
         New Setting("CacheExportConfig", "", Source:=Sources.Registry),
@@ -280,6 +281,7 @@ Public Class Settings
     Public Shared Sub [Set](Key As String, Value As Object, Optional Instance As McInstance = Nothing)
         If Key = "SystemSystemUpdate" Then Value = 3
         If Key = "SystemSystemActivity" Then Value = 2
+        If Key = "SystemSystemTelemetry" Then Value = False
         Dim Entry As Setting = Nothing
         If Not Entries.TryGetValue(Key, Entry) Then Throw New KeyNotFoundException("未找到设置项：" & Key)
         Try
@@ -313,6 +315,7 @@ Public Class Settings
     Public Shared Function [Get](Key As String, Optional Instance As McInstance = Nothing)
         If Key = "SystemSystemUpdate" Then Return 3
         If Key = "SystemSystemActivity" Then Return 2
+        If Key = "SystemSystemTelemetry" Then Return False
         Dim Entry As Setting = Nothing
         If Not Entries.TryGetValue(Key, Entry) Then Throw New KeyNotFoundException("未找到设置项：" & Key)
         Dim Value = Entry.GetCache(Instance)

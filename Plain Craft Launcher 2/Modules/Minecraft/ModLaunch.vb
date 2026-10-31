@@ -880,6 +880,7 @@ LoginFinish:
 
     '微软登录步骤 1，原始登录：获取 DeviceCode 并开启登录网页
     Private Function MsLoginStep1New(Data As LoaderTask(Of McLoginMs, McLoginResult)) As (OAuthAccessToken As String, OAuthRefreshToken As String)
+        If String.IsNullOrWhiteSpace(OAuthClientId) Then Throw New Exception("$微软正版登录尚未配置。请按照随包使用说明设置应用 Client ID，并重新打开特别版。")
         '参考：https://learn.microsoft.com/zh-cn/entra/identity-platform/v2-oauth2-device-code
 
         '初始请求

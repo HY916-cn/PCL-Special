@@ -131,8 +131,25 @@ Public Class PageLaunchRight
                         Url = "https://end.g-fish.dpdns.org/Custom.xaml"
                 End Select
         End Select
+        '联网下载
         If Not String.IsNullOrWhiteSpace(Url) Then
-            Content = "<local:MyHint Theme=""Blue"" Text=""固定版仅加载本地主页。请选择空白、读取本地文件或本地预设。"" />"
+            '替换自定义变量与设置
+            Url = ArgumentReplace(Url, AddressOf WebUtility.HtmlEncode)
+            If Url = Settings.Get(Of String)("CacheSavedPageUrl") AndAlso FileUtils.Exists(PathTemp & "Cache\Custom.xaml") Then
+                '缓存可用
+                Logger.Info("主页自定义数据来源：联网缓存文件")
+                Content = FileUtils.TryReadAsString(PathTemp & "Cache\Custom.xaml")
+                '后台更新缓存
+                OnlineLoader.Start((Url, False))
+            Else
+                '缓存不可用
+                Logger.Info("主页自定义数据来源：联网全新下载")
+                Hint("正在加载主页……")
+                RunInUiWait(Sub() LoadContent(Nothing)) '在加载结束前清空页面
+                Settings.Set("CacheSavedPageVersion", "")
+                OnlineLoader.Start((Url, True)) '下载完成后将会再次触发更新
+                Return
+            End If
         End If
         '同步到 UI
         RunInUi(Sub() LoadContent(Content))

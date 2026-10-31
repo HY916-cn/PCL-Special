@@ -13,10 +13,10 @@ Public Class FormMain
         If BuildType = BuildTypes.Release Then
             If LastVersion < 415 Then 'Release 2.99.0.1
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "恢复：Minecraft 下载、整合包安装与组件修改入口"))
-                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "固定：启动器更新、远程配置与联网主页已关闭"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "调整：启动器更新与远程配置已关闭"))
             End If
             If LastVersion < 413 Then 'Release 2.99.0.0
-                FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "新增：第三方基于 PCL 独立制作的 HY916 固定版"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "新增：第三方基于 PCL 独立制作的 HaoyuHuang 特别版"))
             End If
             If LastVersion < 411 Then 'Release 2.14.0.0
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "新增：允许修改、添加、移除、更新已安装版本的各个组件，可从版本设置中进入"))
@@ -109,10 +109,10 @@ Public Class FormMain
             '1：BUG-
             If LastVersion < 416 Then 'Snapshot 2.99.0.1
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "恢复：Minecraft 下载、整合包安装与组件修改入口"))
-                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "固定：启动器更新、远程配置与联网主页已关闭"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "调整：启动器更新与远程配置已关闭"))
             End If
             If LastVersion < 414 Then 'Snapshot 2.99.0.0
-                FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "新增：第三方基于 PCL 独立制作的 HY916 固定版"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "新增：第三方基于 PCL 独立制作的 HaoyuHuang 特别版"))
             End If
             If LastVersion < 412 Then 'Snapshot 2.14.0.0
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "新增：允许修改、添加、移除、更新已安装版本的各个组件，可从版本设置中进入"))
@@ -452,11 +452,10 @@ Public Class FormMain
             Catch ex As Exception
                 Logger.Warn(ex, "清理自动更新文件失败")
             End Try
-            '上报
-            Telemetry("启动")
             '开源版本提示
-            If VersionBranchMain = "HY916Fixed" AndAlso Settings.Get(Of Integer)("SystemCount") = 1 Then
-                MyMsgBox($"这是第三方基于 PCL 独立制作的 HY916 固定版。{vbCrLf}支持 Minecraft 下载，启动器更新、远程配置与联网主页已关闭。{vbCrLf}微软登录需要设置 PCL_MS_CLIENT_ID；CurseForge 需要设置 PCL_CURSEFORGE_API_KEY。{vbCrLf}原作者：龙腾猫跃，赞助链接见关于页面。", "PCL HY916 固定版")
+            If Not Settings.Get(Of Boolean)("HintSpecialEditionWelcome") Then
+                MyMsgBox($"由 HaoyuHuang 基于 Plain Craft Launcher 独立开发。{vbCrLf}{vbCrLf}支持 Minecraft 下载、全部 15 个配色主题与百宝箱。{vbCrLf}启动器自动更新与远程配置已关闭。{vbCrLf}{vbCrLf}微软正版登录的配置方法，请查看随包使用说明。{vbCrLf}原作者：龙腾猫跃，赞助链接见「关于与鸣谢」。", "PCL HaoyuHuang 特别版")
+                Settings.Set("HintSpecialEditionWelcome", True)
             End If
         End Sub, "初始化", ThreadPriority.Lowest)
 
@@ -629,9 +628,9 @@ Public Class FormMain
         If ReturnCode = ProcessReturnValues.Exception Then
             If Not IsLogShown Then
                 FeedbackInfo()
-                Logger.Info("请在 https://github.com/Meloong-Git/PCL/issues 提交错误报告，以便于作者解决此问题！")
+                Logger.Info("详细错误信息已保存在本地日志中。")
                 IsLogShown = True
-                StartProcess(Paths.Base & "PCL\Log1.txt")
+                StartProcess(Path.Combine(Paths.BaseThenName, "Log1.txt"))
             End If
             Thread.Sleep(500) '防止 PCL 在记事本打开前就被掐掉
         End If

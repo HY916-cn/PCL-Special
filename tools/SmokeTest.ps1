@@ -43,6 +43,7 @@ public static class PclSmokeRunner {
     private static ResourceManager resources;
     private static readonly Dictionary<string, Assembly> libraries = new Dictionary<string, Assembly>();
     private static Dictionary<string, object> themeResult;
+    private static Dictionary<string, object> toolboxResult;
     private const BindingFlags StaticMembers = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
 
     private static object Invoke(Type type, string name, params object[] arguments) {
@@ -108,6 +109,23 @@ public static class PclSmokeRunner {
         Invoke(settings, "Reset", "SystemSystemActivity", null);
         Require(Convert.ToInt32(Invoke(settings, "Get", "SystemSystemActivity", null)) == 2,
             "Resetting settings re-enabled remote announcements.");
+        Invoke(settings, "Set", "SystemSystemTelemetry", true, null);
+        Require(!Convert.ToBoolean(Invoke(settings, "Get", "SystemSystemTelemetry", null)),
+            "Changing settings re-enabled telemetry.");
+        Invoke(settings, "Reset", "SystemSystemTelemetry", null);
+        Require(!Convert.ToBoolean(Invoke(settings, "Get", "SystemSystemTelemetry", null)),
+            "Resetting settings re-enabled telemetry.");
+        RequireNoOp(pcl.GetType("PCL.ModMain", true), "Telemetry");
+        Type secret = pcl.GetType("PCL.ModSecret", true);
+        FieldInfo clientId = secret.GetField("OAuthClientId", StaticMembers);
+        object savedClientId = clientId.GetValue(null);
+        try {
+            clientId.SetValue(null, "");
+            bool rejected = false;
+            try { Invoke(pcl.GetType("PCL.ModLaunch", true), "MsLoginStep1New", new object[] { null }); }
+            catch (Exception ex) { rejected = ex.Message.Contains("Client ID"); }
+            Require(rejected, "Missing Microsoft Client ID was not rejected before authentication.");
+        } finally { clientId.SetValue(null, savedClientId); }
     }
 
     private static string PrimaryThemeColor() {
@@ -189,6 +207,77 @@ public static class PclSmokeRunner {
         }
     }
 
+    private static void CheckToolbox(string work) {
+        Type toolbox = pcl.GetType("PCL.PageOtherTest", true);
+        string[] validUrls = { "http://example.invalid/file.jar", "https://example.invalid/file.jar?x=1", " https://example.invalid/file " };
+        string[] invalidUrls = { null, "", " ", "/relative.jar", "http://", "ftp://example.invalid/file.jar",
+            "file:///C:/file.jar", "data:text/plain,test", "javascript:alert(1)", "https://user:pass@example.invalid/file.jar" };
+        foreach (string url in validUrls)
+            Require((bool)Invoke(toolbox, "IsValidDownloadUrl", url), "Valid download URL was rejected: " + url);
+        foreach (string url in invalidUrls)
+            Require(!(bool)Invoke(toolbox, "IsValidDownloadUrl", url), "Unsafe download URL was accepted: " + url);
+        string[] validNames = { "client.jar", "Minecraft 1.21.zip", "\u4e0b\u8f7d.bin" };
+        string[] invalidNames = { null, "", " ", ".", "..", "client.jar.", " client.jar", "client.jar ",
+            "../client.jar", @"C:\client.jar", "client?.jar", "client:ads", "CON", "con.txt", "PRN.zip", "AUX", "nul.jar",
+            "COM1.zip", "LPT9.log", "COM\u00b9.txt", "LPT\u00b2.txt", new String('x', 256) };
+        foreach (string name in validNames)
+            Require((bool)Invoke(toolbox, "IsValidDownloadFileName", name), "Valid download filename was rejected: " + name);
+        foreach (string name in invalidNames)
+            Require(!(bool)Invoke(toolbox, "IsValidDownloadFileName", name), "Unsafe download filename was accepted: " + name);
+
+        DateTime day = new DateTime(2026, 10, 31);
+        int score = Convert.ToInt32(Invoke(toolbox, "GetDailyScore", day, "PCL-Smoke-Test"));
+        Require(score >= 0 && score <= 100, "Daily score is outside 0..100.");
+        for (int i = 0; i < 10; i++)
+            Require(Convert.ToInt32(Invoke(toolbox, "GetDailyScore", day, "PCL-Smoke-Test")) == score,
+                "Daily score changed for the same date and local key.");
+        Require(!String.IsNullOrWhiteSpace((string)Invoke(toolbox, "GetRandomCave")), "Random cave text was empty.");
+
+        string root = Path.Combine(work, "ToolboxFixtures");
+        string cache = Path.Combine(root, "CacheRoot");
+        string game = Path.Combine(root, "GameRoot");
+        Dictionary<string, string> files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, DateTime> timestamps = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string[] included = { "GameRoot/logs/latest.log", "GameRoot/logs/old.log.gz",
+            "GameRoot/crash-reports/crash-test.txt", "GameRoot/versions/test/logs/latest.log",
+            "GameRoot/versions/test/crash-reports/crash-version.txt", "CacheRoot/Download/stale.tmp",
+            "CacheRoot/Cache/Http/stale.bin" };
+        string[] excluded = { "GameRoot/saves/World/region/r.0.0.mca", "GameRoot/saves/World/level.dat",
+            "GameRoot/mods/keep.jar", "GameRoot/versions/test/test.jar", "GameRoot/versions/test/test.json",
+            "GameRoot/logs/keep.jar", "GameRoot/logs/readme.txt", "GameRoot/crash-reports/notes.txt",
+            "CacheRoot/Download/recent.tmp", "CacheRoot/Download/keep.jar", "CacheRoot/Cache/Http/keep.jar",
+            "CacheRoot/Cache/Http/level.dat" };
+        foreach (string relative in included.Concat(excluded)) {
+            string path = Path.GetFullPath(Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar)));
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            string content = "toolbox smoke fixture: " + relative;
+            File.WriteAllText(path, content);
+            File.SetLastWriteTimeUtc(path, relative.EndsWith("recent.tmp") ? DateTime.UtcNow : DateTime.UtcNow.AddDays(-2));
+            files.Add(path, content);
+            timestamps.Add(path, File.GetLastWriteTimeUtc(path));
+            if (included.Contains(relative)) expected.Add(path);
+        }
+        IEnumerable preview = (IEnumerable)Invoke(toolbox, "GetCleanupPreview", cache, new string[] { game });
+        HashSet<string> actual = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (object entry in preview)
+            actual.Add(Path.GetFullPath((string)entry.GetType().GetProperty("FilePath").GetValue(entry, null)));
+        Require(actual.SetEquals(expected), "Cleanup preview included protected files or missed eligible logs/cache files.");
+        foreach (KeyValuePair<string, string> file in files) {
+            Require(File.Exists(file.Key) && File.ReadAllText(file.Key) == file.Value,
+                "Cleanup preview changed or removed a fixture: " + file.Key);
+            Require(File.GetLastWriteTimeUtc(file.Key) == timestamps[file.Key],
+                "Cleanup preview changed a fixture timestamp: " + file.Key);
+        }
+        toolboxResult = new Dictionary<string, object> {
+            { "passed", true }, { "downloadUrlValidation", true }, { "downloadFileNameValidation", true },
+            { "dailyScoreStable", true }, { "dailyScore", score }, { "randomCaveNonEmpty", true },
+            { "cleanupPreviewEntries", actual.Count }, { "protectedFixturesPreserved", files.Count },
+            { "cleanupExecuted", false }, { "memoryOptimizationExecuted", false }
+        };
+        Console.WriteLine("PASS: toolbox input validation, stable daily score, cave text, and non-destructive cleanup preview.");
+    }
+
     private static void DownloadTest(string work) {
         Type download = pcl.GetType("PCL.ModDownload", true);
         Type network = pcl.GetType("PCL.ModNet", true);
@@ -220,8 +309,8 @@ public static class PclSmokeRunner {
             { "downloadEngine", "PCL.ModNet.NetDownloadByLoader" },
             { "settingsStorage", "isolated default settings in local Setup.ini" },
             { "downloadRestriction", false }, { "updateMethods", "verified no-op IL" },
-            { "fixedSettings", "Set and Reset preserve updates=3, announcements=2" },
-            { "themes", themeResult }
+            { "fixedSettings", "Set and Reset preserve updates=3, announcements=2, telemetry=false" },
+            { "themes", themeResult }, { "toolbox", toolboxResult }
         };
         File.WriteAllText(Path.Combine(work, "smoke-result.json"), serializer.Serialize(report));
         Console.WriteLine("PASS: PCL resolved Minecraft 1.0, downloaded JSON and client JAR, and verified size/SHA-1.");
@@ -264,6 +353,8 @@ public static class PclSmokeRunner {
             RuntimeHelpers.RunClassConstructor(pcl.GetType("PCL.ModBase", true).TypeHandle);
             Console.WriteLine("VERIFY: theme palettes and refresh behavior");
             CheckThemes();
+            Console.WriteLine("VERIFY: toolbox validation and cleanup preview");
+            CheckToolbox(work);
             Exception failure = null;
             bool finished = false;
             Thread worker = new Thread(delegate() {
@@ -331,7 +422,7 @@ if ($env:GITHUB_ACTIONS -eq 'true') {
             $gui.Refresh()
             $logPath = Join-Path $work 'PCLHY916Fixed/Log1.txt'
             $log = if (Test-Path $logPath) { Get-Content -LiteralPath $logPath -Raw -Encoding UTF8 } else { '' }
-            if ($gui.MainWindowHandle -ne [IntPtr]::Zero -and $gui.MainWindowTitle -eq 'PCL HY916 固定版' -and $log.Contains('第三阶段加载用时')) {
+            if ($gui.MainWindowHandle -ne [IntPtr]::Zero -and $gui.MainWindowTitle -eq 'PCL HaoyuHuang 特别版' -and $log.Contains('第三阶段加载用时')) {
                 $loaded = $true
                 break
             }
