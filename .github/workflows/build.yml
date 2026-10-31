@@ -38,3 +38,4 @@ jobs:
             dist/*
             artifacts/smoke/smoke-result.json
             artifacts/smoke/*.log
+            artifacts/smoke/**/Log*.txt

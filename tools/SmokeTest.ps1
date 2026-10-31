@@ -237,7 +237,7 @@ if ($env:GITHUB_ACTIONS -eq 'true') {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         while ([DateTime]::UtcNow -lt $deadline -and -not $gui.HasExited) {
             $gui.Refresh()
-            $logPath = Join-Path $work 'PCL/Log1.txt'
+            $logPath = Join-Path $work 'PCLHY916Fixed/Log1.txt'
             $log = if (Test-Path $logPath) { Get-Content -LiteralPath $logPath -Raw -Encoding UTF8 } else { '' }
             if ($gui.MainWindowHandle -ne [IntPtr]::Zero -and $gui.MainWindowTitle -eq 'PCL HY916 固定版' -and $log.Contains('第三阶段加载用时')) {
                 $loaded = $true
