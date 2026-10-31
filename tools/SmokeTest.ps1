@@ -206,7 +206,7 @@ $framework = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
 $reference = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
 $compiler = Join-Path $framework 'csc.exe'
 $runner = Join-Path $work 'SmokeRunner.exe'
-& $compiler /nologo /target:exe "/out:$runner" "/reference:$reference\PresentationFramework.dll" "/reference:$reference\PresentationCore.dll" "/reference:$reference\WindowsBase.dll" "/reference:$reference\System.Xaml.dll" "/reference:$reference\System.Web.Extensions.dll" $sourcePath
+& $compiler /nologo /target:exe "/out:$runner" "/reference:$reference\PresentationFramework.dll" "/reference:$reference\PresentationCore.dll" "/reference:$reference\WindowsBase.dll" "/reference:$reference\System.Xaml.dll" $sourcePath
 if ($LASTEXITCODE -ne 0) { throw 'Smoke test runner compilation failed.' }
 & $runner $testExecutable
 if ($LASTEXITCODE -ne 0) { throw "PCL smoke test failed with exit code $LASTEXITCODE." }
