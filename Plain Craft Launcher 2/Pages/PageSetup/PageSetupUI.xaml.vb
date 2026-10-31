@@ -4,6 +4,18 @@ Public Class PageSetupUI
         '重复加载部分
         PanBack.ScrollToHome()
         ThemeCheckAll(True)
+        If ThemeDontClick <> 0 Then
+            Dim NewText As String = Nothing
+            Select Case ThemeDontClick
+                Case 1
+                    NewText = "眼瞎白"
+                Case 2
+                    NewText = "真·滑稽彩"
+            End Select
+            For Each ThemeControl As UIElement In PanLauncherTheme.Children
+                If TypeOf ThemeControl Is MyRadioBox AndAlso CType(ThemeControl, MyRadioBox).IsEnabled Then CType(ThemeControl, MyRadioBox).Text = NewText
+            Next
+        End If
 
         AniControlEnabled += 1
         Refresh() '#4826

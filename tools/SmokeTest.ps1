@@ -209,73 +209,48 @@ public static class PclSmokeRunner {
 
     private static void CheckToolbox(string work) {
         Type toolbox = pcl.GetType("PCL.PageOtherTest", true);
-        string[] validUrls = { "http://example.invalid/file.jar", "https://example.invalid/file.jar?x=1", " https://example.invalid/file " };
-        string[] invalidUrls = { null, "", " ", "/relative.jar", "http://", "ftp://example.invalid/file.jar",
-            "file:///C:/file.jar", "data:text/plain,test", "javascript:alert(1)", "https://user:pass@example.invalid/file.jar" };
-        foreach (string url in validUrls)
-            Require((bool)Invoke(toolbox, "IsValidDownloadUrl", url), "Valid download URL was rejected: " + url);
-        foreach (string url in invalidUrls)
-            Require(!(bool)Invoke(toolbox, "IsValidDownloadUrl", url), "Unsafe download URL was accepted: " + url);
-        string[] validNames = { "client.jar", "Minecraft 1.21.zip", "\u4e0b\u8f7d.bin" };
-        string[] invalidNames = { null, "", " ", ".", "..", "client.jar.", " client.jar", "client.jar ",
-            "../client.jar", @"C:\client.jar", "client?.jar", "client:ads", "CON", "con.txt", "PRN.zip", "AUX", "nul.jar",
-            "COM1.zip", "LPT9.log", "COM\u00b9.txt", "LPT\u00b2.txt", new String('x', 256) };
-        foreach (string name in validNames)
-            Require((bool)Invoke(toolbox, "IsValidDownloadFileName", name), "Valid download filename was rejected: " + name);
-        foreach (string name in invalidNames)
-            Require(!(bool)Invoke(toolbox, "IsValidDownloadFileName", name), "Unsafe download filename was accepted: " + name);
-
         DateTime day = new DateTime(2026, 10, 31);
         int score = Convert.ToInt32(Invoke(toolbox, "GetDailyScore", day, "PCL-Smoke-Test"));
         Require(score >= 0 && score <= 100, "Daily score is outside 0..100.");
         for (int i = 0; i < 10; i++)
             Require(Convert.ToInt32(Invoke(toolbox, "GetDailyScore", day, "PCL-Smoke-Test")) == score,
                 "Daily score changed for the same date and local key.");
-        Require(!String.IsNullOrWhiteSpace((string)Invoke(toolbox, "GetRandomCave")), "Random cave text was empty.");
-
-        string root = Path.Combine(work, "ToolboxFixtures");
-        string cache = Path.Combine(root, "CacheRoot");
-        string game = Path.Combine(root, "GameRoot");
-        Dictionary<string, string> files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, DateTime> timestamps = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
-        HashSet<string> expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        string[] included = { "GameRoot/logs/latest.log", "GameRoot/logs/old.log.gz",
-            "GameRoot/crash-reports/crash-test.txt", "GameRoot/versions/test/logs/latest.log",
-            "GameRoot/versions/test/crash-reports/crash-version.txt", "CacheRoot/Download/stale.tmp",
-            "CacheRoot/Cache/Http/stale.bin" };
-        string[] excluded = { "GameRoot/saves/World/region/r.0.0.mca", "GameRoot/saves/World/level.dat",
-            "GameRoot/mods/keep.jar", "GameRoot/versions/test/test.jar", "GameRoot/versions/test/test.json",
-            "GameRoot/logs/keep.jar", "GameRoot/logs/readme.txt", "GameRoot/crash-reports/notes.txt",
-            "CacheRoot/Download/recent.tmp", "CacheRoot/Download/keep.jar", "CacheRoot/Cache/Http/keep.jar",
-            "CacheRoot/Cache/Http/level.dat" };
-        foreach (string relative in included.Concat(excluded)) {
-            string path = Path.GetFullPath(Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar)));
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            string content = "toolbox smoke fixture: " + relative;
-            File.WriteAllText(path, content);
-            File.SetLastWriteTimeUtc(path, relative.EndsWith("recent.tmp") ? DateTime.UtcNow : DateTime.UtcNow.AddDays(-2));
-            files.Add(path, content);
-            timestamps.Add(path, File.GetLastWriteTimeUtc(path));
-            if (included.Contains(relative)) expected.Add(path);
-        }
-        IEnumerable preview = (IEnumerable)Invoke(toolbox, "GetCleanupPreview", cache, new string[] { game });
-        HashSet<string> actual = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (object entry in preview)
-            actual.Add(Path.GetFullPath((string)entry.GetType().GetProperty("FilePath").GetValue(entry, null)));
-        Require(actual.SetEquals(expected), "Cleanup preview included protected files or missed eligible logs/cache files.");
-        foreach (KeyValuePair<string, string> file in files) {
-            Require(File.Exists(file.Key) && File.ReadAllText(file.Key) == file.Value,
-                "Cleanup preview changed or removed a fixture: " + file.Key);
-            Require(File.GetLastWriteTimeUtc(file.Key) == timestamps[file.Key],
-                "Cleanup preview changed a fixture timestamp: " + file.Key);
-        }
+        for (int i = 0; i < 128; i++)
+            Require(!String.IsNullOrWhiteSpace((string)Invoke(toolbox, "GetRandomCave")), "Random cave text was empty.");
+        foreach (string method in new string[] { "Jrrp", "RubbishClear", "MemoryOptimize", "MemoryOptimizeInternal", "StartCustomDownload" })
+            Require(toolbox.GetMethod(method, StaticMembers) != null, "Missing original toolbox entry: " + method);
+        foreach (string method in new string[] { "BtnClick_Click", "CardCave_MouseLeftButtonUp", "BtnCave_Click", "DownloadState", "SaveCacheDownloadFolder" })
+            Require(toolbox.GetMethod(method, StaticMembers | BindingFlags.Instance) != null, "Missing original toolbox interaction: " + method);
+        string hints = Path.Combine(work, "PCL", "hints.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(hints));
+        File.WriteAllText(hints, "\r\nOriginal custom hint fixture\r\n\r\n");
+        try {
+            Require((string)Invoke(toolbox, "GetRandomHint") == "Original custom hint fixture", "Custom hints were not read by the original flow.");
+        } finally { File.Delete(hints); }
+        for (int i = 0; i < 128; i++)
+            Require(!String.IsNullOrWhiteSpace((string)Invoke(toolbox, "GetRandomPresetHint")), "Original preset hint was empty.");
+        Type theme = pcl.GetType("PCL.ModSecret", true);
+        FieldInfo mode = theme.GetField("ThemeDontClick", StaticMembers);
+        try {
+            mode.SetValue(null, 1);
+            Invoke(theme, "ThemeRefresh", -1);
+            Require(ThemeField(theme, "ColorLightAdjust") == 999, "Original white color effect was not applied.");
+            mode.SetValue(null, 2);
+            for (int i = 0; i < 10; i++) {
+                Invoke(theme, "ThemeRefresh", -1);
+                Require(ThemeField(theme, "ColorHue") >= 0 && ThemeField(theme, "ColorHue") <= 359 &&
+                    ThemeField(theme, "ColorSat") >= 40 && ThemeField(theme, "ColorSat") <= 70 &&
+                    ThemeField(theme, "ColorLightAdjust") >= -20 && ThemeField(theme, "ColorLightAdjust") <= 20,
+                    "Original randomized color effect was not applied.");
+            }
+        } finally { mode.SetValue(null, 0); Invoke(theme, "ThemeRefresh", 0); }
         toolboxResult = new Dictionary<string, object> {
-            { "passed", true }, { "downloadUrlValidation", true }, { "downloadFileNameValidation", true },
+            { "passed", true }, { "referenceEdition", "public PCL 2.99.0.1" },
             { "dailyScoreStable", true }, { "dailyScore", score }, { "randomCaveNonEmpty", true },
-            { "cleanupPreviewEntries", actual.Count }, { "protectedFixturesPreserved", files.Count },
-            { "cleanupExecuted", false }, { "memoryOptimizationExecuted", false }
+            { "customHintFile", true }, { "presetHintsNonEmpty", true }, { "colorEffectsApplied", true },
+            { "cleanupExecuted", false }, { "memoryOptimizationExecuted", false }, { "windowPranksExecuted", false }
         };
-        Console.WriteLine("PASS: toolbox input validation, stable daily score, cave text, and non-destructive cleanup preview.");
+        Console.WriteLine("PASS: original toolbox entries, daily score, cave text, custom/preset hints, and prank color effects.");
     }
 
     private static void DownloadTest(string work) {
@@ -353,7 +328,7 @@ public static class PclSmokeRunner {
             RuntimeHelpers.RunClassConstructor(pcl.GetType("PCL.ModBase", true).TypeHandle);
             Console.WriteLine("VERIFY: theme palettes and refresh behavior");
             CheckThemes();
-            Console.WriteLine("VERIFY: toolbox validation and cleanup preview");
+            Console.WriteLine("VERIFY: original toolbox behavior");
             CheckToolbox(work);
             Exception failure = null;
             bool finished = false;

@@ -917,7 +917,7 @@ NextFile:
             IsTaskTempClearing = True
             Try
                 Logger.Info("开始清理任务缓存文件夹")
-                DirectoryUtils.Delete($"{OsDrive}ProgramData\PCL\TaskTemp\")
+                DirectoryUtils.Delete($"{OsDrive}ProgramData\PCLHY916Fixed\TaskTemp\")
                 DirectoryUtils.Delete($"{PathTemp}TaskTemp\")
                 Logger.Info("已清理任务缓存文件夹")
             Catch ex As Exception
@@ -950,7 +950,7 @@ NextFile:
         Catch
         End Try
         '使用备用路径
-        ResultFolder = $"{OsDrive}ProgramData\PCL\TaskTemp\{GetUuid()}-{RandomInteger(0, 1000000)}\"
+        ResultFolder = $"{OsDrive}ProgramData\PCLHY916Fixed\TaskTemp\{GetUuid()}-{RandomInteger(0, 1000000)}\"
         DirectoryUtils.Create(ResultFolder)
         CheckPermission(ResultFolder)
         Return ResultFolder
@@ -988,6 +988,7 @@ NextFile:
             MyMsgBoxTick()
             FrmMain.DragTick()
             LoaderTaskbarProgressRefresh()
+            If ThemeDontClick = 2 Then ThemeRefresh()
 #End Region
         Catch ex As Exception
             Logger.Error(ex, "短程主时钟执行异常", LogBehavior.AlertThenCrash)

@@ -9,7 +9,8 @@
 
 解压 Windows 包到一个独立文件夹，双击 `PCL-HaoyuHuang-Special-2.99.0.1.exe`。需要 Windows 和 .NET Framework 4.8。
 在“下载”中选择 Minecraft 版本即可安装；模组加载器、整合包安装与文件补全沿用 PCL 的下载流程。
-在“更多 → 百宝箱”中使用今日人品、内存优化、垃圾清理、回声洞和自定义文件下载。
+在“更多 → 百宝箱”中使用今日人品、内存优化、清理游戏垃圾、千万别点、回声洞和自定义文件下载。
+百宝箱沿用公开版本的布局、文案、动画和功能流程。清理游戏垃圾会删除游戏日志、错误报告、调试输出、可重新解压的原生库和本特别版全部缓存，完成后关闭或重启启动器；自定义缓存路径会在确认框中明确显示。
 
 本版本在编译时开启 Minecraft 下载；启动器自动更新、更新替换入口、远程配置和公告均关闭。
 功能所需的联网保留：Minecraft 版本列表、游戏文件、组件、在线主页及百宝箱。遥测与匿名数据上报已移除。
@@ -46,7 +47,7 @@ Client ID 是应用标识，不是微软账号密码。当前包没有完成真�
 
 主题参数交叉核对来源：[快照版主题实现](https://github.com/TomorrowX6/PCL-Snapshot/blob/d867f395b2b79939127b95e873e2c2c6113cb53f/PCL/ModSecret.cs#L576)、[第二份公开实现](https://github.com/oliverlacey426/PCLCRK/blob/51def4747a2437e9d2b35d7810e3727167fc461b/PCL2_Source_CS/Source/PCL/ModSecret.cs#L474)。
 
-百宝箱布局与流程参考[公开快照实现](https://github.com/TomorrowX6/PCL-Snapshot/blob/d867f395b2b79939127b95e873e2c2c6113cb53f/PCL/PageOtherTest.xaml.cs)，回声洞沿用公开版本内置的 735 条文本。
+百宝箱布局与流程参考[公开快照实现](https://github.com/TomorrowX6/PCL-Snapshot/blob/d867f395b2b79939127b95e873e2c2c6113cb53f/PCL/PageOtherTest.xaml.cs)，回声洞保留公开版本内置的 735 条文本、原版分组抽取、31 条预设提示及闪烁逐字动画。
 
 Windows 安装 Visual Studio 2022 Build Tools（.NET 桌面开发、.NET Framework 4.8 SDK）、PowerShell 7 及支持 C# 13 的 .NET SDK 后执行：
 

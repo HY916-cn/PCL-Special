@@ -89,7 +89,6 @@ Friend Module ModSecret
         Try
             If NewTheme >= 0 Then ThemeNow = NewTheme
             If Not ThemeCheckOne(ThemeNow) Then ThemeNow = 0
-            ThemeDontClick = 0
             If ThemeNow <= 11 Then
                 ColorHue = ThemePalettes(ThemeNow, 0)
                 ColorSat = ThemePalettes(ThemeNow, 1)
@@ -117,6 +116,15 @@ Friend Module ModSecret
                 ColorLightAdjust = Settings.Get(Of Integer)("UiLauncherLight").Clamp(0, 40) - 20
                 ColorHueTopbarDelta = Settings.Get(Of Integer)("UiLauncherDelta").Clamp(0, 180) - 90
             End If
+
+            Select Case ThemeDontClick
+                Case 1
+                    ColorLightAdjust = 999
+                Case 2
+                    ColorHue = RandomInteger(0, 359)
+                    ColorSat = RandomInteger(40, 70)
+                    ColorLightAdjust = RandomInteger(-20, 20)
+            End Select
 
             Color1 = New MyColor().FromHSL2(ColorHue, ColorSat * 0.2, 25 + ColorLightAdjust * 0.3)
             Color2 = New MyColor().FromHSL2(ColorHue, ColorSat, 45 + ColorLightAdjust)
@@ -165,7 +173,7 @@ Friend Module ModSecret
                 Brush.GradientStops.Add(New GradientStop With {.Offset = 0, .Color = New MyColor().FromHSL2(ColorHue, ColorSat, 25)})
                 Brush.GradientStops.Add(New GradientStop With {.Offset = 0.5, .Color = New MyColor().FromHSL2(ColorHue, ColorSat, 15)})
                 Brush.GradientStops.Add(New GradientStop With {.Offset = 1, .Color = New MyColor().FromHSL2(ColorHue, ColorSat, 25)})
-            ElseIf ThemeNow = 12 Then
+            ElseIf ThemeNow = 12 OrElse ThemeDontClick = 2 Then
                 Brush.GradientStops.Add(New GradientStop With {.Offset = 0, .Color = New MyColor().FromHSL2(ColorHue - 21, ColorSat, 53 + ColorLightAdjust)})
                 Brush.GradientStops.Add(New GradientStop With {.Offset = 0.33, .Color = New MyColor().FromHSL2(ColorHue - 7, ColorSat, 47 + ColorLightAdjust)})
                 Brush.GradientStops.Add(New GradientStop With {.Offset = 0.67, .Color = New MyColor().FromHSL2(ColorHue + 7, ColorSat, 47 + ColorLightAdjust)})
@@ -177,7 +185,7 @@ Friend Module ModSecret
                 Brush.GradientStops.Add(New GradientStop With {.Offset = 1, .Color = New MyColor().FromHSL2(ColorHue + Deltas(2), ColorSat, 48 + ColorLightAdjust)})
             End If
             FrmMain.PanTitle.Background = Brush
-            If ThemeNow <> 12 Then FrmMain.PanTitle.Background.Freeze()
+            If ThemeNow = 5 OrElse (ThemeNow <> 12 AndAlso ThemeDontClick <> 2) Then FrmMain.PanTitle.Background.Freeze()
             FrmMain.ImgTitle.Source = If(ThemeNow >= 5 AndAlso ThemeNow <= 13, $"{PathImage}Themes/{ThemeNow}.png", Nothing)
             FrmMain.ImgTitle.Opacity = If(ThemeNow = 13, 0.25, 0.5)
             '主页面背景
