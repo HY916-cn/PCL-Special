@@ -948,6 +948,7 @@
   <ItemGroup>
     <Resource Include="Images\Heads\ChongQing.png" />
     <Resource Include="Images\Heads\HerobrineXia.png" />
+    <Resource Include="Images\Heads\HaoyuHuang.png" />
 
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.VisualBasic.targets" />

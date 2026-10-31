@@ -51,10 +51,11 @@ public static class PclSmokeRunner {
 
     private static Assembly ResolveLibrary(object sender, ResolveEventArgs args) {
         string name = new AssemblyName(args.Name).Name;
+        if (name.EndsWith(".resources", StringComparison.OrdinalIgnoreCase)) return null;
         lock (libraries) {
             Assembly result;
             if (libraries.TryGetValue(name, out result)) return result;
-            byte[] bytes = resources.GetObject(name) as byte[];
+            byte[] bytes = resources.GetObject(name, System.Globalization.CultureInfo.InvariantCulture) as byte[];
             if (bytes == null) return null;
             result = Assembly.Load(bytes);
             libraries.Add(name, result);
@@ -156,14 +157,18 @@ public static class PclSmokeRunner {
             pcl = Assembly.LoadFrom(args[0]);
             resources = new ResourceManager("PCL.Resources", pcl);
             AppDomain.CurrentDomain.AssemblyResolve += ResolveLibrary;
+            Console.WriteLine("INIT: embedded core dependencies");
             Assembly core = ResolveLibrary(null, new ResolveEventArgs("MeloongCore"));
             Invoke(core.GetType("MeloongCore.Main", true), "Init", "PCLSmokeTest");
+            Console.WriteLine("INIT: WPF application");
             Application app = new Application();
             app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             Assembly wpf = ResolveLibrary(null, new ResolveEventArgs("MeloongCore.Wpf"));
             Invoke(wpf.GetType("MeloongCore.Wpf.Main", true), "Init");
+            Console.WriteLine("INIT: isolated settings");
             IsolateSettings();
             CheckFixedSettings();
+            Console.WriteLine("VERIFY: download restriction and update settings");
             Type secret = pcl.GetType("PCL.ModSecret", true);
             Require(!(bool)secret.GetField("RestrictMcDownload", StaticMembers).GetRawConstantValue(),
                 "Minecraft download restriction is enabled.");
@@ -171,6 +176,7 @@ public static class PclSmokeRunner {
             RequireNoOp(secret, "UpdateReplace");
             RequireNoOp(secret, "DownloadLatestPCL");
             // Initialize UiThreadId on the dispatcher thread before any network worker starts.
+            Console.WriteLine("INIT: PCL modules");
             RuntimeHelpers.RunClassConstructor(pcl.GetType("PCL.ModBase", true).TypeHandle);
             Exception failure = null;
             bool finished = false;
