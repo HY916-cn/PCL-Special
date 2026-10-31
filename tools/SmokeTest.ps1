@@ -13,7 +13,7 @@ if (Test-Path -LiteralPath $work) {
 } else {
     New-Item -ItemType Directory -Path $work | Out-Null
 }
-$testExecutable = Join-Path $work 'Plain Craft Launcher 2.exe'
+$testExecutable = Join-Path $work ([IO.Path]::GetFileName($executable))
 Copy-Item -LiteralPath $executable -Destination $testExecutable
 if (Test-Path -LiteralPath "$executable.config") {
     Copy-Item -LiteralPath "$executable.config" -Destination "$testExecutable.config"
@@ -227,6 +227,30 @@ if ((Get-FileHash -LiteralPath $testExecutable -Algorithm SHA256).Hash -ne $befo
 }
 $reportPath = Join-Path $work 'smoke-result.json'
 $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+if ($env:GITHUB_ACTIONS -eq 'true') {
+    if (Test-Path 'HKCU:\Software\PCLHY916Fixed') {
+        throw 'GUI smoke test requires a fresh disposable Windows profile.'
+    }
+    $gui = Start-Process -FilePath $testExecutable -WorkingDirectory $work -PassThru
+    try {
+        $loaded = $false
+        $deadline = [DateTime]::UtcNow.AddSeconds(30)
+        while ([DateTime]::UtcNow -lt $deadline -and -not $gui.HasExited) {
+            $gui.Refresh()
+            $logPath = Join-Path $work 'PCL/Log1.txt'
+            $log = if (Test-Path $logPath) { Get-Content -LiteralPath $logPath -Raw -Encoding UTF8 } else { '' }
+            if ($gui.MainWindowHandle -ne [IntPtr]::Zero -and $gui.MainWindowTitle -eq 'PCL HY916 固定版' -and $log.Contains('第三阶段加载用时')) {
+                $loaded = $true
+                break
+            }
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not $loaded) { throw 'Launcher did not display its main window and complete startup within 30 seconds.' }
+        $report | Add-Member -NotePropertyName guiStartup -NotePropertyValue 'main window displayed and third startup stage completed; EULA left untouched'
+    } finally {
+        if (-not $gui.HasExited) { $gui.Kill(); $gui.WaitForExit() }
+    }
+}
 $report.passed = $true
 $report | Add-Member -NotePropertyName updateCommand -NotePropertyValue 'exited as Cancel (4); executable SHA-256 unchanged'
 $report | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $reportPath -Encoding UTF8
