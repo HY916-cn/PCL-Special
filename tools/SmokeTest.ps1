@@ -1271,13 +1271,18 @@ $reportPath = Join-Path $work 'smoke-result.json'
 $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
 if ($env:GITHUB_ACTIONS -eq 'true') {
     # The --update launch can initialize and persist its local identity before exiting.
-    $gui = Start-Process -FilePath $testExecutable -WorkingDirectory $work -PassThru
+    $standaloneDirectory = Join-Path $work 'Standalone'
+    New-Item -ItemType Directory -Path $standaloneDirectory | Out-Null
+    $standaloneExecutable = Join-Path $standaloneDirectory ([IO.Path]::GetFileName($testExecutable))
+    Copy-Item -LiteralPath $testExecutable -Destination $standaloneExecutable
+    if (@(Get-ChildItem -LiteralPath $standaloneDirectory -Force).Count -ne 1) { throw 'Standalone startup must begin with only the EXE.' }
+    $gui = Start-Process -FilePath $standaloneExecutable -WorkingDirectory $standaloneDirectory -PassThru
     try {
         $loaded = $false
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         while ([DateTime]::UtcNow -lt $deadline -and -not $gui.HasExited) {
             $gui.Refresh()
-            $logPath = Join-Path $work 'PCLHY916Fixed/Log1.txt'
+            $logPath = Join-Path $standaloneDirectory 'PCLHY916Fixed/Log1.txt'
             $log = if (Test-Path $logPath) { Get-Content -LiteralPath $logPath -Raw -Encoding UTF8 } else { '' }
             if ($gui.MainWindowHandle -ne [IntPtr]::Zero -and $gui.MainWindowTitle -eq 'PCL特别版' -and $log.Contains('第三阶段加载用时')) {
                 $loaded = $true
@@ -1287,6 +1292,7 @@ if ($env:GITHUB_ACTIONS -eq 'true') {
         }
         if (-not $loaded) { throw ("Launcher startup check failed. Title='{0}', Handle={1}, HasExited={2}." -f $gui.MainWindowTitle, $gui.MainWindowHandle, $gui.HasExited) }
         $report | Add-Member -NotePropertyName guiStartup -NotePropertyValue 'main window displayed and third startup stage completed; EULA left untouched'
+        $report | Add-Member -NotePropertyName standaloneExecutableStartup -NotePropertyValue 'started from a directory containing only the EXE; main window and third startup stage verified'
     } finally {
         if (-not $gui.HasExited) { $gui.Kill(); $gui.WaitForExit() }
     }

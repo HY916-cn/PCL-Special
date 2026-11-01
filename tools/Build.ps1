@@ -45,7 +45,8 @@ Upstream: Meloong-Git/PCL 93ede5d9e638c99fcec853a9ba1eecd91ceee7f5
 MeloongCore: $coreRevision
 "@ | Set-Content "$output/SOURCE.txt" -Encoding utf8
     $files = @("$output/$name.exe", "$output/$name.exe.config", "$output/使用说明.md", "$output/LICENCE", "$output/SOURCE.txt", "$output/LinkModules")
-    Compress-Archive -Path $files -DestinationPath "$output/$name-Windows.zip" -Force
+    Compress-Archive -LiteralPath "$output/$name.exe" -DestinationPath "$output/$name-单EXE版.zip" -Force
+    Compress-Archive -Path $files -DestinationPath "$output/$name-联机版.zip" -Force
 
     $source = Join-Path $root "artifacts/source"
     New-Item -ItemType Directory -Force $source | Out-Null
