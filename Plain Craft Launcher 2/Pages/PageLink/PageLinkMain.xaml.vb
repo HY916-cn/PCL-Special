@@ -512,7 +512,7 @@ Public Class PageLinkMain
         If Peers.Count = 0 OrElse Peers.Any(Function(p) Not IsValidPeerAddress(p)) Then
             Throw New ArgumentException("联机节点地址有误，请检查自定义节点设置")
         End If
-        Dim Arguments = $"--no-tun --use-smoltcp --network-name={RoomName} --network-secret={RoomSecret} --listeners {ListenerPort} --rpc-portal 127.0.0.1:{RpcPort} --private-mode true --hostname={HostName}"
+        Dim Arguments = $"--no-tun --use-smoltcp --bind-device false --network-name={RoomName} --network-secret={RoomSecret} --listeners {ListenerPort} --rpc-portal 127.0.0.1:{RpcPort} --private-mode true --hostname={HostName}"
         If IsServer Then
             Arguments &= $" -i 10.114.114.114 --tcp-whitelist={Port} --udp-whitelist={Port}"
         Else

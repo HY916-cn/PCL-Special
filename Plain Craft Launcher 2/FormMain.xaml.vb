@@ -13,6 +13,7 @@ Public Class FormMain
         If BuildType = BuildTypes.Release Then
             If LastVersion < 415 Then 'Release 2.99.0.1
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "恢复：Minecraft 下载、整合包安装与组件修改入口"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "恢复：创建与加入联机房间，以及自定义节点设置"))
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "调整：启动器更新与远程配置已关闭"))
             End If
             If LastVersion < 413 Then 'Release 2.99.0.0
@@ -87,9 +88,6 @@ Public Class FormMain
                 BugCount += 13
             End If
             If LastVersion < 379 Then 'Release 2.12.1
-                If LastVersion >= 376 Then
-                    FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "删除：暂时隐藏联机入口……不过只是暂时关闭，它还会回来的！"))
-                End If
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(3, "新增：适配新的 Minecraft 版本号系统与 Unobfuscated 版本"))
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "优化：巨幅优化各个下载页面和 Mod 管理页面的性能"))
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：更换披风时会显示当前使用的披风"))
@@ -109,6 +107,7 @@ Public Class FormMain
             '1：BUG-
             If LastVersion < 416 Then 'Snapshot 2.99.0.1
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "恢复：Minecraft 下载、整合包安装与组件修改入口"))
+                FeatureList.Add(New KeyValuePair(Of Integer, String)(4, "恢复：创建与加入联机房间，以及自定义节点设置"))
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "调整：启动器更新与远程配置已关闭"))
             End If
             If LastVersion < 414 Then 'Snapshot 2.99.0.0
@@ -229,9 +228,6 @@ Public Class FormMain
                 End If
             End If
             If LastVersion < 377 Then 'Snapshot 2.12.0
-                If LastVersion >= 373 Then
-                    FeatureList.Add(New KeyValuePair(Of Integer, String)(5, "删除：暂时隐藏联机入口……不过只是暂时关闭，它还会回来的！"))
-                End If
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(3, "新增：适配新的 Minecraft 版本号系统与 Unobfuscated 版本"))
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(2, "优化：巨幅优化各个下载页面和 Mod 管理页面的性能"))
                 FeatureList.Add(New KeyValuePair(Of Integer, String)(1, "优化：更换披风时会显示当前使用的披风"))

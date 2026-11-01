@@ -517,7 +517,7 @@ public static class PclSmokeRunner {
             catch { rejected = true; }
             Require(rejected, "Unsafe custom peer arguments were accepted.");
         }
-        Require(hostArgs.Contains("--rpc-portal 127.0.0.1:") && clientArgs.Contains("--tcp-whitelist=0") &&
+        Require(hostArgs.Contains("--rpc-portal 127.0.0.1:") && hostArgs.Contains("--bind-device false") && clientArgs.Contains("--tcp-whitelist=0") &&
             clientArgs.Contains("--port-forward udp://127.0.0.1:"), "Original no-TUN restricted forwarding arguments were not built.");
         // Keep the transport test on loopback and avoid public STUN traffic.
         hostArgs = hostArgs.Replace("--listeners " + hostListen, "--listeners tcp://127.0.0.1:" + hostListen) + " --stun-servers --stun-servers-v6";
@@ -537,6 +537,12 @@ public static class PclSmokeRunner {
                     if (ready) break;
                 } catch (InvalidOperationException) {}
                 Thread.Sleep(250);
+            }
+            if (!ready) {
+                foreach (string log in new string[] { "link-host.log", "link-client.log" }) {
+                    string path = Path.Combine(work, log);
+                    if (File.Exists(path)) Console.Error.WriteLine(log + ":\n" + String.Join("\n", File.ReadLines(path).Reverse().Take(12).Reverse()));
+                }
             }
             Require(ready, "Native peers did not discover the host and obtain a client IPv4.");
             byte[] payload = Encoding.UTF8.GetBytes("PCL native multiplayer forwarding check");
