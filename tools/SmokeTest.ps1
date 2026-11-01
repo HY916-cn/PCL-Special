@@ -255,12 +255,34 @@ public static class PclSmokeRunner {
         Require((string)Invoke(settings, "Get", key, null) == fixture,
             "Encrypted settings from the previous device identity were not preserved.");
         string newCipher = (string)Invoke(basis, "ReadIni", "Setup", key, "");
-        Require(newCipher != oldCipher && (string)Invoke(settings, "DesDecrypt", newCipher, "PCL" + code) == fixture,
+        const string prefix = "PCLDevice1:";
+        Require(newCipher.StartsWith(prefix, StringComparison.Ordinal) && (string)Invoke(settings, "DesDecrypt", newCipher.Substring(prefix.Length), "PCL" + code) == fixture,
             "Legacy encrypted settings were not migrated to the current device identity.");
         cache.GetType().GetMethod("Clear").Invoke(cache, null);
         Require((string)Invoke(settings, "Get", key, null) == fixture,
             "Migrated settings were not readable on a fresh load.");
-        Invoke(settings, "Reset", key, null);
+        // This synthetic identity accepts legacy DES padding with the wrong key; migration must still choose the legacy format.
+        FieldInfo identity = basis.GetField("Identify", StaticMembers);
+        const string ambiguousIdentity = "6EDE-0E9F-46BB-673C";
+        Require((string)Invoke(settings, "DesDecrypt", oldCipher, "PCL" + ambiguousIdentity) != fixture,
+            "The ambiguous legacy fixture must decrypt without an exception using the wrong key.");
+        try {
+            identity.SetValue(null, ambiguousIdentity);
+            Invoke(basis, "WriteIni", "Setup", key, oldCipher);
+            cache.GetType().GetMethod("Clear").Invoke(cache, null);
+            Require((string)Invoke(settings, "Get", key, null) == fixture,
+                "Legacy settings were read with the wrong key despite their unversioned format.");
+            newCipher = (string)Invoke(basis, "ReadIni", "Setup", key, "");
+            Require(newCipher.StartsWith(prefix, StringComparison.Ordinal) &&
+                (string)Invoke(settings, "DesDecrypt", newCipher.Substring(prefix.Length), "PCL" + ambiguousIdentity) == fixture,
+                "Ambiguous legacy ciphertext was not migrated to the versioned format.");
+            cache.GetType().GetMethod("Clear").Invoke(cache, null);
+            Require((string)Invoke(settings, "Get", key, null) == fixture,
+                "The versioned migration fixture could not be reloaded.");
+        } finally {
+            identity.SetValue(null, code);
+            Invoke(settings, "Reset", key, null);
+        }
         Console.WriteLine("PASS: original local device identity, persistent seed, and encrypted-settings migration.");
     }
 
@@ -306,6 +328,7 @@ public static class PclSmokeRunner {
             { "passed", true }, { "referenceEdition", "public PCL 2.99.0.1" },
             { "dailyScoreStable", true }, { "dailyScore", score }, { "randomCaveNonEmpty", true },
             { "localDeviceIdentity", true }, { "publicIdentityAlgorithm", true }, { "legacyEncryptedSettingsMigrated", true },
+            { "ambiguousLegacyCiphertextMigrated", true },
             { "customHintFile", true }, { "presetHintsNonEmpty", true }, { "colorEffectsApplied", true },
             { "cleanupExecuted", false }, { "memoryOptimizationExecuted", false }, { "windowPranksExecuted", false }
         };
@@ -368,7 +391,8 @@ public static class PclSmokeRunner {
             { "embeddedSharedKey", embedded }, { "headerHostAndTlsChecks", true },
             { "officialApiVerified", officialVerified }, { "testModId", 238222 }, { "keyDisclosed", false }
         };
-        Console.WriteLine("PASS: CurseForge credential routing and official API verification.");
+        Console.WriteLine(officialVerified ? "PASS: CurseForge credential routing and official API verification." :
+            "PASS: CurseForge credential routing; official API verification skipped without an embedded key.");
     }
 
     private static void CheckMicrosoftPollingRules() {

@@ -2,6 +2,8 @@ Imports System.Security.Cryptography
 
 Public Class Settings
 
+    Private Const DeviceEncryptionPrefix As String = "PCLDevice1:"
+
     Public Shared ReadOnly Entries As Dictionary(Of String, Setting) = (New List(Of Setting) From {
         New Setting("Identify", "", Source:=Sources.Registry),
         New Setting("WindowHeight", 550),
@@ -253,7 +255,7 @@ Public Class Settings
             If Encrypted Then
                 Try
                     If Value Is Nothing Then Value = ""
-                    Value = DesEncrypt(Value, "PCL" & Identify)
+                    Value = DeviceEncryptionPrefix & DesEncrypt(Value, "PCL" & Identify)
                 Catch ex As Exception
                     Logger.Warn(ex, $"加密设置失败：{Key}")
                 End Try
@@ -351,19 +353,19 @@ Public Class Settings
                     GotValue = Entry.DefaultValue
                 Else
                     Try
-                        GotValue = DesDecrypt(GotValue, "PCL" & Identify)
-                    Catch ex As Exception
-                        Try
-                            '兼容使用默认设备识别码保存的特别版设置，并按当前设备重新保存。
+                        If GotValue.StartsWith(DeviceEncryptionPrefix, StringComparison.Ordinal) Then
+                            GotValue = DesDecrypt(GotValue.Substring(DeviceEncryptionPrefix.Length), "PCL" & Identify)
+                        Else
+                            '旧特别版统一使用默认识别码；通过格式标记确定密钥，避免误把错误解密当作成功。
                             GotValue = DesDecrypt(GotValue, "PCL0000-0000-0000-0000")
                             Entry.Set(CTypeDynamic(GotValue, Entry.Type), Instance)
                             Entry.Save(Instance)
-                        Catch
-                            Logger.Warn(ex, $"解密设置失败：{Key}")
-                            GotValue = Entry.DefaultValue
-                            Entry.Set(Entry.DefaultValue, Instance)
-                            Entry.Save(Instance)
-                        End Try
+                        End If
+                    Catch ex As Exception
+                        Logger.Warn(ex, $"解密设置失败：{Key}")
+                        GotValue = Entry.DefaultValue
+                        Entry.Set(Entry.DefaultValue, Instance)
+                        Entry.Save(Instance)
                     End Try
                 End If
             End If
