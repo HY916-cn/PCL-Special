@@ -461,7 +461,7 @@ public static class PclSmokeRunner {
         string module = Path.Combine(work, "EasyTier-2.6.4");
         object package = Invoke(link, "GetModulePackage", "x86_64", module);
         Type packageType = package.GetType();
-        string archive = (string)packageType.GetField("LocalName").GetValue(package);
+        string archive = (string)packageType.GetField("LocalPath").GetValue(package);
         object checker = packageType.GetField("Check").GetValue(package);
         string[] urls = ((IEnumerable)packageType.GetField("Sources").GetValue(package)).Cast<object>()
             .Select(s => (string)s.GetType().GetField("Url").GetValue(s)).ToArray();
