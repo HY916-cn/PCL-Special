@@ -85,7 +85,7 @@ def package(minecraft, dist, output):
               "sha256": digest(archive_path, "sha256"), "gameFilesVerified": inventory["fileCount"],
               "assetObjects": inventory["assetObjects"], "java": inventory["java"]["version"]}
     (output / "portable-package-result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(json.dumps(result, ensure_ascii=True, indent=2))
 
 
 if __name__ == "__main__":

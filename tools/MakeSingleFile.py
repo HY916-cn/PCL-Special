@@ -70,7 +70,7 @@ def make(stub, archive, output, edition, folder, launcher):
     result = {"file": output.name, "edition": edition, "bytes": output.stat().st_size, "sha256": digest(output),
               "payloadSha256": metadata["archiveSha256"], "stubSha256": digest(stub), "files": len(names),
               "uncompressedBytes": metadata["uncompressedBytes"], "folder": folder, "launcher": launcher}
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(json.dumps(result, ensure_ascii=True, indent=2))
     return result
 
 
