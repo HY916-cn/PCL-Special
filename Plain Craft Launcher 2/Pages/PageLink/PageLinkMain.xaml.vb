@@ -7,8 +7,7 @@ Imports PCL
 Public Class PageLinkMain
     Private Const INVITE_CODE_VERSION As Integer = 2
     Private Const EasyTierVersion As String = "2.6.4"
-    Private Const FallbackDiscoverID As Integer = 94
-    Private Const FallbackDiscoverAddress As String = "tcp://mc1.easytier.cn:55558"
+    Private Const DefaultDiscoverID As Integer = &HFFF
     Private ModuleArchitecture As String
 
     '===============================
@@ -540,7 +539,7 @@ Public Class PageLinkMain
         If Task.IsCanceled Then Throw New OperationCanceledException
         Task.Progress = 0.07
         '获取节点列表
-        UpdateLoadingPage("正在获取节点列表……", "获取节点列表")
+        UpdateLoadingPage("正在选择联机节点……", "选择联机节点")
         Dim RawPeers As List(Of String)
         Dim CustomPeers As String = Settings.Get(Of String)("LinkCustomPeer")
         If String.IsNullOrWhiteSpace(CustomPeers) Then
@@ -572,7 +571,7 @@ Public Class PageLinkMain
         ProcessStart(Arguments)
         Task.Progress = 0.15
         '等待连接
-        Dim TimeoutCounter As Integer = 0
+        Dim ConnectionTimer = System.Diagnostics.Stopwatch.StartNew()
         Do
             Thread.Sleep(500) '为避免还没启动好先跑 CLI 了，先等半秒
             '刷新信息
@@ -585,7 +584,6 @@ Public Class PageLinkMain
                 Exit Do '退出循环
             End If
             '更新进度
-            Dim LastProgress = Task.Progress
             Dim PeerCount As Integer = If(Peers Is Nothing, -1, Peers.Where(Function(p) p.Ping > 0).Count)
             Select Case PeerCount
                 Case -1 'CLI 无返回
@@ -597,19 +595,15 @@ Public Class PageLinkMain
                     UpdateLoadingPage("正在连接到房主……", "连接房主")
                     Task.Progress = (Task.Progress + 0.02).Clamp(Math.Min(0.45 + PeerCount * 0.05, 0.65), 0.95)
             End Select
-            '超时判定
-            If LastProgress <> Task.Progress Then
-                TimeoutCounter = 0
-            ElseIf TimeoutCounter < 30 * 2 Then
-                TimeoutCounter += 1
-            Else '进度停滞超过 30s
+            '按实际耗时限制连接等待，CLI 查询耗时也计入其中。
+            If ConnectionTimer.ElapsedMilliseconds >= 60000 Then
                 Select Case PeerCount
-                    Case -1 'CLI 无返回
-                        Panic("无法启动联机模块", "近期日志：" & vbCrLf & LogHistory.Join(vbCrLf))
-                    Case 0 'CLI 有返回，但未连接到任何节点
-                        Panic("无法连接到节点", $"请检查你的网络环境是否良好。")
-                    Case Else '已连接到节点，但未连接到房主
-                        Panic("无法连接到房主", $"可能的原因：{vbCrLf}- 你或者房主的网络环境不佳{vbCrLf}- 房主已关闭房间{vbCrLf}- 邀请码输错了")
+                    Case -1
+                        Throw New Exception("$联机模块在 60 秒内未能返回节点信息，请重试。")
+                    Case 0
+                        Throw New Exception("$60 秒内未能连接到联机节点。请重试，或在 设置 → 联机 → 高级设置 中填写双方一致的可用自定义节点。")
+                    Case Else
+                        Throw New Exception("$60 秒内未能连接到房主。请确认房间仍然开放、邀请码正确，并且双方使用相同的节点设置和最新版特别版。")
                 End Select
             End If
         Loop Until Task.IsCanceled
@@ -626,93 +620,18 @@ Public Class PageLinkMain
         Next
     End Sub
     ''' <summary>
-    ''' 从在线配置和 API 获取需要连接的节点列表，并更新发现节点 ID。
-    ''' 根据发现节点 ID，会有以下行为变化：
-    '''   -1：作为房主，根据负载均衡选择一个发现节点。
-    '''   0：作为加入者，但邀请码未提供发现节点 ID，使用回退发现节点。
-    '''   >0：作为加入者，根据 ID 选择对应的发现节点；如果没有，使用回退发现节点。
+    ''' 当前版本的公共节点。房主与加入者连接同一组节点以发现房间。
     ''' </summary>
+    Friend Shared Function GetDefaultPeers() As List(Of String)
+        Return New List(Of String) From {
+            "tcp://easytier.weiai.org.cn:11010",
+            "tcp://225284.xyz:11010"
+        }
+    End Function
+
     Private Function GetTargetPeers() As List(Of String)
-        Dim FinalPeers As New List(Of String), FinalDiscoverID As Integer = -1
-        Try
-            '从 API 获取节点列表
-            Dim RawNodes As JObject
-            Dim IsFallbackRawList As Boolean = False
-            Try
-                RawNodes = NetRequestByClient("https://uptime.easytier.cn/api/nodes?page=1&per_page=1000", Timeout:=5000, RequireJson:=True).DeserializeJson()
-            Catch exx As Exception
-                Logger.Warn(exx, "从源站获取节点列表失败，将使用 CDN 缓存")
-                RawNodes = NetRequestByClient("https://easytier.meloong.com/?page=1&per_page=1000", Timeout:=5000, RequireJson:=True).DeserializeJson()
-                IsFallbackRawList = True
-            End Try
-            '分析节点列表
-            Dim Nodes As New List(Of JObject) '负载会添加在 load 字段上
-            For Each Node As JObject In RawNodes("data")("items")
-                '状态检查
-                Dim ID = Node("id").ToObject(Of Integer)
-                If Not Node("is_active").ToObject(Of Boolean) OrElse Not Node("is_approved").ToObject(Of Boolean) Then Continue For
-                If ID < 1 OrElse ID > &HFFF Then Continue For
-                If Not IsValidPeerAddress(Node("address")?.ToString()) Then Continue For
-                If ID = DiscoverNodeID Then GoTo ForcedPass '若为指定的发现节点，忽略后续检查
-                If ID = FallbackDiscoverID Then Continue For '不主动选取回退发现节点
-                If Node("usage_percentage").ToObject(Of Double) = 0 AndAlso RandomInteger(1, 100) <> 1 Then Continue For '或许节点有问题才导致是 0 负载，让它只有 1% 概率被选中
-                '标签检查
-                Dim Tags = Node("tags").Select(Function(t) t.ToString).ToList
-                If Not Tags.Contains("国内") OrElse Not Tags.Contains("MC中继") Then Continue For
-                '计算负载并加入列表
-ForcedPass:
-                Dim Load As Double = Node("usage_percentage").ToObject(Of Double) '负载
-                Load *= 110 - Node("health_percentage_24h").ToObject(Of Double) '可用率
-                Node("load") = Load
-                Nodes.Add(Node)
-            Next
-            '排序
-            If Not IsFallbackRawList Then
-                Nodes = Nodes.OrderBy(Function(n) n("load").ToObject(Of Double)).ToList() '按负载从低到高排序
-            Else
-                Nodes = Nodes.Shuffle().ToList() '回退到 CDN 缓存时，由于负载数据可能过期，直接随机选择
-            End If
-            '选取发现节点
-            Dim SelectedDiscoverNode As JObject = Nothing
-            If DiscoverNodeID = -1 Then '-1：作为房主，根据负载均衡选择一个发现节点
-                SelectedDiscoverNode = Nodes.FirstOrDefault(Function(n) Not n("allow_relay").ToObject(Of Boolean))
-            ElseIf DiscoverNodeID = FallbackDiscoverID Then
-                SelectedDiscoverNode = New JObject From {{"address", FallbackDiscoverAddress}, {"id", FallbackDiscoverID}}
-            ElseIf DiscoverNodeID > 0 Then '>0：作为加入者，根据 ID 选择对应的发现节点；如果没有，使用回退发现节点
-                SelectedDiscoverNode = Nodes.FirstOrDefault(Function(n) n("id").ToObject(Of Integer) = DiscoverNodeID)
-                If SelectedDiscoverNode Is Nothing Then
-                    Logger.Warn($"未找到 ID {DiscoverNodeID} 的发现节点")
-                    Panic("房间已过期", "请让房主重新创建房间！")
-                    Throw New OperationCanceledException
-                End If
-            End If
-            If SelectedDiscoverNode Is Nothing Then '使用回退发现节点
-                SelectedDiscoverNode = New JObject From {{"address", FallbackDiscoverAddress}, {"id", FallbackDiscoverID}}
-                Logger.Warn("将使用回退发现节点")
-            End If
-            FinalPeers.Add(SelectedDiscoverNode("address").ToString())
-            FinalDiscoverID = SelectedDiscoverNode("id").ToObject(Of Integer)
-            Logger.Info($"发现节点：{SelectedDiscoverNode("address")} (ID: {FinalDiscoverID})")
-            '选取中继节点
-            If ModeDebug OrElse Not IsServerSide Then '房主只连接发现节点，不连接中继节点
-                Dim RelayCount As Integer = 2
-                Dim RelayNodes = Nodes.Where(Function(n) n("allow_relay").ToObject(Of Boolean)).ToList()
-                FinalPeers.AddRange(RelayNodes.Take(RelayCount).Select(Function(n) n("address").ToString()))
-            End If
-        Catch ex As Exception
-            ex.ThrowIfCanceled()
-            Logger.Error(ex, "获取节点列表失败，联机质量可能受到影响", LogBehavior.Toast)
-            FinalPeers.Add("tcp://public.easytier.top:11010")
-            If FinalDiscoverID <= 0 Then
-                FinalPeers.Add(FallbackDiscoverAddress)
-                FinalDiscoverID = FallbackDiscoverID
-            End If
-        End Try
-        '保留固定发现节点，让节点列表暂不可用时仍有共同的连接入口。
-        FinalPeers.Add(FallbackDiscoverAddress)
-        '结束
-        DiscoverNodeID = FinalDiscoverID
-        Return FinalPeers.Distinct.ToList
+        DiscoverNodeID = DefaultDiscoverID
+        Return GetDefaultPeers()
     End Function
 
 #End Region

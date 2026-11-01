@@ -425,7 +425,7 @@ public static class PclSmokeRunner {
         return process;
     }
 
-    private static List<Dictionary<string, object>> LinkPeers(string file, int rpc) {
+    private static List<Dictionary<string, object>> LinkPeers(string file, int rpc, int timeoutMilliseconds = 5000) {
         using (Process process = new Process { StartInfo = new ProcessStartInfo {
             FileName = file, Arguments = "-o json -p 127.0.0.1:" + rpc + " peer",
             WorkingDirectory = Path.GetDirectoryName(file), UseShellExecute = false, CreateNoWindow = true,
@@ -435,7 +435,7 @@ public static class PclSmokeRunner {
             process.Start();
             var output = process.StandardOutput.ReadToEndAsync();
             var errors = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(5000)) { process.Kill(); process.WaitForExit(); throw new TimeoutException("EasyTier CLI timed out."); }
+            if (!process.WaitForExit(timeoutMilliseconds)) { process.Kill(); process.WaitForExit(); throw new TimeoutException("EasyTier CLI timed out."); }
             Require(process.ExitCode == 0, "EasyTier CLI returned an error.");
             errors.GetAwaiter().GetResult();
             return new JavaScriptSerializer().Deserialize<List<Dictionary<string, object>>>(output.GetAwaiter().GetResult());
@@ -488,12 +488,14 @@ public static class PclSmokeRunner {
         UdpClient udpEcho = new UdpClient(new IPEndPoint(IPAddress.Loopback, game));
         Thread tcpThread = new Thread(delegate() {
             try { while (true) using (TcpClient client = echo.AcceptTcpClient()) {
-                client.ReceiveTimeout = 5000;
-                byte[] data = new byte[1024];
-                NetworkStream stream = client.GetStream();
-                int count;
-                while ((count = stream.Read(data, 0, data.Length)) > 0) stream.Write(data, 0, count);
-            }} catch (SocketException) {} catch (ObjectDisposedException) {} catch (IOException) {}
+                try {
+                    client.ReceiveTimeout = 8000;
+                    byte[] data = new byte[1024];
+                    NetworkStream stream = client.GetStream();
+                    int count;
+                    while ((count = stream.Read(data, 0, data.Length)) > 0) stream.Write(data, 0, count);
+                } catch (IOException) {}
+            }} catch (SocketException) {} catch (ObjectDisposedException) {}
         });
         tcpThread.IsBackground = true;
         tcpThread.Start();
@@ -562,36 +564,109 @@ public static class PclSmokeRunner {
                 IPEndPoint sender = null;
                 Require(payload.SequenceEqual(client.Receive(ref sender)), "UDP forwarded data differed from its payload.");
             }
-            List<Dictionary<string, object>> publicProbes = new List<Dictionary<string, object>>();
-            foreach (string peerAddress in new string[] { "tcp://mc1.easytier.cn:55558", "tcp://public.easytier.top:11010", "tcp://public.easytier.cn:11010" }) {
-                int probeRpc = nextPort(), probeListen = nextPort();
-                string probeArgs = (string)Invoke(link, "BuildLinkArguments", true, game, forward, probeRpc, probeListen,
-                    "P" + game.ToString("X4") + "-FGHJK", "6789A", "Server-PROBE", new string[] { peerAddress }, false);
-                probeArgs = probeArgs.Replace("--listeners " + probeListen, "--listeners tcp://127.0.0.1:" + probeListen) + " --stun-servers --stun-servers-v6";
-                bool connected = false;
-                using (Process probe = StartLinkCore(core, probeArgs, Path.Combine(work, "link-public-" + publicProbes.Count + ".log"))) {
+            string[] publicPeers = ((IEnumerable)Invoke(link, "GetDefaultPeers")).Cast<string>().ToArray();
+            Require(publicPeers.Length > 0 && publicPeers.Length <= 2, "The public relay test requires one or two configured nodes.");
+            List<Dictionary<string, object>> publicRelayResults = new List<Dictionary<string, object>>();
+            foreach (string peerAddress in publicPeers) {
+                int relayHostRpc = nextPort(), relayClientRpc = nextPort(), relayHostListen = nextPort(), relayClientListen = nextPort(), relayForward = nextPort();
+                string relayRoom = "P" + game.ToString("X4") + "-" + Guid.NewGuid().ToString("N").Substring(0, 5).ToUpperInvariant();
+                string relaySecret = Guid.NewGuid().ToString("N").Substring(0, 5).ToUpperInvariant();
+                bool relayDhcpReady = false, hostDiscovered = false, relayVerified = false, tcpVerified = false, udpVerified = false;
+                string hostCost = "", failureReason = "", stage = "process startup";
+                Process relayHost = null, relayGuest = null;
+                try {
+                    string relayHostArgs = (string)Invoke(link, "BuildLinkArguments", true, game, relayForward, relayHostRpc, relayHostListen,
+                        relayRoom, relaySecret, "Server-RELAY", new string[] { peerAddress }, false);
+                    string relayClientArgs = (string)Invoke(link, "BuildLinkArguments", false, game, relayForward, relayClientRpc, relayClientListen,
+                        relayRoom, relaySecret, "Client-RELAY", new string[] { peerAddress }, false);
+                    // Disable P2P and STUN so the fixture payload must travel through this public relay.
+                    relayHostArgs = relayHostArgs.Replace("--listeners " + relayHostListen, "--listeners tcp://127.0.0.1:" + relayHostListen) +
+                        " --stun-servers --stun-servers-v6 --disable-p2p";
+                    relayClientArgs = relayClientArgs.Replace("--listeners " + relayClientListen, "--listeners tcp://127.0.0.1:" + relayClientListen) +
+                        " --stun-servers --stun-servers-v6 --disable-p2p";
+                    int relayIndex = publicRelayResults.Count;
+                    relayHost = StartLinkCore(core, relayHostArgs, Path.Combine(work, "link-public-" + relayIndex + "-host.log"));
+                    relayGuest = StartLinkCore(core, relayClientArgs, Path.Combine(work, "link-public-" + relayIndex + "-client.log"));
+                    stage = "relay discovery";
+                    DateTime relayDeadline = DateTime.UtcNow.AddSeconds(30);
+                    while (DateTime.UtcNow < relayDeadline) {
+                        Require(!relayHost.HasExited && !relayGuest.HasExited, "A public relay peer exited early.");
+                        try {
+                            int remaining = Math.Max(1, (int)Math.Min(5000, (relayDeadline - DateTime.UtcNow).TotalMilliseconds));
+                            List<Dictionary<string, object>> peers = LinkPeers(cli, relayClientRpc, remaining);
+                            relayDhcpReady = peers.Any(p => Convert.ToString(p["cost"]) == "Local" && !String.IsNullOrEmpty(Convert.ToString(p["ipv4"])));
+                            Dictionary<string, object> hostPeer = peers.FirstOrDefault(p => Convert.ToString(p["ipv4"]) == "10.114.114.114" && Convert.ToString(p["cost"]) != "Local");
+                            hostDiscovered = hostPeer != null;
+                            string cost = hostDiscovered ? Convert.ToString(hostPeer["cost"]) : "";
+                            hostCost = new string(cost.Where(c => c >= ' ' && c <= '~').Take(80).ToArray());
+                            relayVerified = cost.IndexOf("relay", StringComparison.OrdinalIgnoreCase) >= 0;
+                            if (relayDhcpReady && hostDiscovered && relayVerified) break;
+                        } catch (InvalidOperationException) {} catch (TimeoutException) {}
+                        int delay = (int)Math.Min(250, (relayDeadline - DateTime.UtcNow).TotalMilliseconds);
+                        if (delay > 0) Thread.Sleep(delay);
+                    }
+                    Require(relayDhcpReady && hostDiscovered && relayVerified, "Public relay discovery timed out.");
+                    stage = "TCP echo";
                     try {
-                        DateTime probeDeadline = DateTime.UtcNow.AddSeconds(12);
-                        while (DateTime.UtcNow < probeDeadline && !probe.HasExited) {
-                            try { connected = LinkPeers(cli, probeRpc).Any(p => Convert.ToString(p["cost"]) != "Local"); }
-                            catch (InvalidOperationException) {}
-                            if (connected) break;
-                            Thread.Sleep(250);
+                        Require(!relayHost.HasExited && !relayGuest.HasExited, "A public relay peer exited early.");
+                        using (TcpClient client = new TcpClient()) {
+                            client.SendTimeout = client.ReceiveTimeout = 8000;
+                            Require(client.ConnectAsync(IPAddress.Loopback, relayForward).Wait(8000), "TCP relay connection timed out.");
+                            NetworkStream stream = client.GetStream();
+                            stream.Write(payload, 0, payload.Length);
+                            byte[] response = new byte[payload.Length];
+                            int received = 0;
+                            while (received < response.Length) { int count = stream.Read(response, received, response.Length - received); Require(count > 0, "TCP relay echo was truncated."); received += count; }
+                            Require(payload.SequenceEqual(response), "TCP relay echo differed from its payload.");
+                            tcpVerified = true;
                         }
-                    } finally { if (!probe.HasExited) probe.Kill(); probe.WaitForExit(); }
+                    } catch (Exception ex) { failureReason = stage + ": " + ex.GetType().Name; }
+                    stage = "UDP echo";
+                    try {
+                        Require(!relayHost.HasExited && !relayGuest.HasExited, "A public relay peer exited early.");
+                        using (UdpClient client = new UdpClient()) {
+                            client.Client.SendTimeout = client.Client.ReceiveTimeout = 8000;
+                            client.Send(payload, payload.Length, new IPEndPoint(IPAddress.Loopback, relayForward));
+                            IPEndPoint sender = null;
+                            Require(payload.SequenceEqual(client.Receive(ref sender)), "UDP relay echo differed from its payload.");
+                            udpVerified = true;
+                        }
+                    } catch (Exception ex) { failureReason += (failureReason.Length == 0 ? "" : "; ") + stage + ": " + ex.GetType().Name; }
+                    stage = "peer liveness";
+                    Require(!relayHost.HasExited && !relayGuest.HasExited, "A public relay peer exited early.");
+                } catch (Exception ex) { failureReason += (failureReason.Length == 0 ? "" : "; ") + stage + ": " + ex.GetType().Name; }
+                finally {
+                    foreach (Process process in new Process[] { relayGuest, relayHost }) if (process != null) {
+                        try {
+                            if (!process.HasExited) process.Kill();
+                            Require(process.WaitForExit(5000), "A public relay peer did not stop.");
+                        } catch (Exception ex) { failureReason += (failureReason.Length == 0 ? "" : "; ") + "process cleanup: " + ex.GetType().Name; }
+                        finally { process.Dispose(); }
+                    }
                 }
-                publicProbes.Add(new Dictionary<string, object> { { "endpoint", peerAddress }, { "handshakeVerified", connected } });
+                bool relayPassed = relayVerified && tcpVerified && udpVerified && failureReason.Length == 0;
+                publicRelayResults.Add(new Dictionary<string, object> {
+                    { "endpoint", peerAddress }, { "clientDhcpReady", relayDhcpReady }, { "hostDiscovered", hostDiscovered },
+                    { "hostCost", hostCost }, { "relayVerified", relayVerified }, { "tcpForwardEcho", tcpVerified },
+                    { "udpForwardEcho", udpVerified }, { "passed", relayPassed }, { "failureReason", failureReason }
+                });
+                Console.WriteLine("PUBLIC RELAY: " + peerAddress + " discovery=" + (relayDhcpReady && hostDiscovered) +
+                    " relay=" + relayVerified + " TCP=" + tcpVerified + " UDP=" + udpVerified +
+                    (failureReason.Length == 0 ? "" : " reason=" + failureReason));
             }
+            bool publicRelayConnectionTested = publicRelayResults.Any(p => (bool)p["clientDhcpReady"] && (bool)p["hostDiscovered"] && (bool)p["relayVerified"]);
+            bool publicRelayTcpUdpVerified = publicRelayResults.Any(p => (bool)p["passed"]);
             multiplayerResult = new Dictionary<string, object> {
-                { "passed", true }, { "easyTierVersion", "2.6.4" }, { "moduleSha256", archiveHash },
+                { "passed", publicRelayTcpUdpVerified }, { "easyTierVersion", "2.6.4" }, { "moduleSha256", archiveHash },
                 { "pinnedPackageDownloadedAndInstalled", true }, { "invalidArchiveRejected", true },
                 { "invitationValidation", true }, { "customPeerValidation", true }, { "localRpcOnly", true },
                 { "clientDhcpReady", true }, { "nativeCliSchema", true }, { "tcpForwardEcho", true }, { "udpForwardEcho", true },
                 { "transport", "two native processes over loopback TCP using production argument builder" },
-                { "wanNatTraversalTested", false }, { "publicNodeHandshakes", publicProbes },
-                { "publicRelayConnectionTested", publicProbes.Any(p => (bool)p["handshakeVerified"]) }
+                { "wanNatTraversalTested", false }, { "publicRelayResults", publicRelayResults },
+                { "publicRelayConnectionTested", publicRelayConnectionTested }, { "publicRelayTcpUdpVerified", publicRelayTcpUdpVerified }
             };
-            Console.WriteLine("PASS: pinned multiplayer module installation, native CLI, and two-peer TCP/UDP forwarding.");
+            Require(publicRelayTcpUdpVerified, "No configured public relay passed both TCP and UDP forwarding.");
+            Console.WriteLine("PASS: pinned multiplayer module installation, native CLI, local TCP/UDP forwarding, and public relay TCP/UDP forwarding.");
         } finally {
             foreach (Process process in new Process[] { guest, host }) if (process != null) {
                 try { if (!process.HasExited) process.Kill(); process.WaitForExit(); } finally { process.Dispose(); }

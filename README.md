@@ -40,9 +40,11 @@ Minecraft 原版下载不依赖 CurseForge API Key。联机使用本地固定配
 
 首次使用会下载并校验固定的 [EasyTier 2.6.4](https://github.com/EasyTier/EasyTier/releases/tag/v2.6.4)，各架构 ZIP 的 SHA-256 固定在源码中。后续复用本地模块。使用[无 TUN 模式](https://www.easytier.cn/guide/network/no-root.html)转发所选游戏端口，无需安装虚拟网卡。模块版本由本地代码确定；联机不会接收 PCL 远程配置中的版本门槛或关闭指令。
 
-默认保留社区节点选择与固定节点回退。可在“设置 → 联机 → 高级设置 → 自定义节点”中填写自己的 EasyTier 节点，多个地址用逗号分隔，房主与加入者应填写一致。连接结果仍受双方 NAT、防火墙、网络线路和社区节点状态影响。
+默认连接 `tcp://easytier.weiai.org.cn:11010` 与 `tcp://225284.xyz:11010`，使用 [MCTier 公开列出的第三方节点](https://github.com/pmh1314520/MCTier/blob/master/README.md#默认服务与元数据披露)。原 EasyTier Uptime 节点目录已停运（[PCL 社区记录](https://github.com/Meloong-Git/PCL/issues/7557#issuecomment-3538821897)），本版本直接使用内置节点配置。HTTPS 下载仍进行正常证书校验。
 
-验证脚本会使用实际 Windows 模块下载器、安装函数和启动参数，运行两个回环连接的原生进程并检查 TCP、UDP 数据转发、客户端地址分配与 CLI 节点信息；这不等同于跨运营商 NAT 穿透或公网中继测试。
+更新后请房主重新创建房间，所有参与者使用同一修复包。“设置 → 联机 → 高级设置 → 自定义节点”留空时使用上述内置节点；也可填写自己的 EasyTier 节点，多个地址用逗号分隔，房主与加入者应填写一致。连接等待按实际耗时计时，60 秒内仍未连通会提示重试或配置自定义节点。连接结果仍受双方 NAT、防火墙、网络线路和公共节点状态影响。
+
+验证脚本使用实际 Windows 模块下载器、安装函数和启动参数，检查本地双端 TCP/UDP 转发，再用两个原生进程经公网节点强制中继，核验 TCP/UDP 数据回显；至少一个内置节点完成双协议数据转发才算通过。测试进程位于同一运行环境，跨运营商 NAT 穿透仍需实地验证。
 
 ## 微软正版登录
 
