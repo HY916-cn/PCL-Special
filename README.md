@@ -8,13 +8,13 @@
 
 ## 使用
 
-提供三个版本，均需要 Windows 和 .NET Framework 4.8：
+提供三个 EXE，均需要 Windows 和 .NET Framework 4.8：
 
-- `PCL特别版-2.99.99.zip`：仅包含启动器 EXE，游戏和联机模块按需下载。
-- `PCL联机版-2.99.99.zip`：启动器与随附联机模块，首次联机从本地校验安装模块。
-- `PCL便携版-2.99.99-MC26.3.zip`：预装 26.3、Java、完整游戏资源及联机模块，适用于 Windows x64。
+- `PCL特别版-2.99.99.exe`：启动器本体，游戏和联机模块按需下载。
+- `PCL联机版-2.99.99.exe`：随附联机模块，适用于 Windows x64。
+- `PCL便携版-2.99.99-MC26.3.exe`：随附 26.3、Java、完整游戏资源及联机模块，适用于 Windows x64。
 
-特别版和联机版解压后双击 `PCL特别版-2.99.99.exe`。
+联机版和便携版首次打开时会自动校验、释放随附文件到 EXE 旁边同名文件夹，并打开启动器；以后双击同一个 EXE 会复用本地文件。请将 EXE 放在可写的独立文件夹，并一起保留生成的数据目录；游戏、Java 和原生联机模块运行时需要这些本地文件。恢复时保留用户设置和新增的存档、模组等文件。
 在“下载”中选择 Minecraft 版本即可安装；模组加载器、整合包安装与文件补全沿用 PCL 的下载流程。
 在“更多 → 百宝箱”中使用今日人品、内存优化、清理游戏垃圾、千万别点、回声洞和自定义文件下载。
 百宝箱沿用公开版本的布局、文案、动画和功能流程。清理游戏垃圾会删除游戏日志、错误报告、调试输出、可重新解压的原生库和本特别版全部缓存，完成后关闭或重启启动器；自定义缓存路径会在确认框中明确显示。
@@ -32,7 +32,7 @@ Minecraft 原版下载不依赖 CurseForge API Key。联机使用本地固定配
 
 ## 便携版
 
-`PCL便携版-2.99.99-MC26.3.zip` 适用于 Windows x64。完整解压后双击 `PCL.exe`，再点击“启动游戏”。启动器已使用随包游戏目录、预选 26.3 并配置随附的官方 Java 25.0.1。首次需自行确认用户协议，并在“正版”中完成微软账号授权。
+双击 `PCL便携版-2.99.99-MC26.3.exe`，首次准备完成后，在打开的启动器中点击“启动游戏”。启动器已使用随包游戏目录、预选 26.3 并配置随附的官方 Java 25.0.1。首次需自行确认用户协议，并在“正版”中完成微软账号授权。
 
 包内包含 26.3 原版客户端、Windows 支持库、完整资源文件及 Java；`Minecraft-inventory.json` 记录逐文件下载来源、大小、SHA-1 和 SHA-256。预下载文件均依据官方清单校验。登录、多人服务器等功能仍按需联网；后续模组、资源包或额外组件需要另行下载。包内未预设账号资料或用户名。
 
@@ -100,7 +100,7 @@ Windows 安装 Visual Studio 2022 Build Tools（.NET 桌面开发、.NET Framewo
 pwsh -NoProfile -File ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL特别版-2.99.99.exe -WorkDirectory ./artifacts/smoke
 ```
 
-`dist` 目录包含程序、特别版与联机版压缩包、源码压缩包、随附联机模块与 SHA-256 校验文件。
+`dist` 目录包含启动器本体、压缩包、源码及随附联机模块。执行 `tools/BuildSingleFile.ps1` 会编译单文件入口、生成联机版 EXE 并验证首次释放、重复启动、设置保留与损坏文件拒绝；GitHub Actions 自动执行这一步。打包使用 .NET 的 [ZipArchive](https://learn.microsoft.com/en-us/dotnet/api/system.io.compression.ziparchive) 和有界文件流，逐文件读取，便携版数据不需要整体加载到内存。
 
 准备完整便携包（需要 Python 3.9+）后，可在 Windows 上执行 Java 与游戏主类加载检查：
 
@@ -108,6 +108,7 @@ pwsh -NoProfile -File ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL特别版-
 python ./tools/PrepareMinecraft.py --output ./artifacts/minecraft-26.3
 ./tools/VerifyPortable.ps1 -PortableDirectory ./artifacts/minecraft-26.3 -ReportPath ./artifacts/portable-result.json
 python ./tools/PackagePortable.py --minecraft ./artifacts/minecraft-26.3 --dist ./dist --output ./artifacts/portable-package
+python ./tools/MakeSingleFile.py --stub ./artifacts/single-file/PCLPackageStub.exe --archive ./artifacts/portable-package/PCL便携版-2.99.99-MC26.3.zip --output ./dist/PCL便携版-2.99.99-MC26.3.exe --edition PCL便携版 --folder PCL便携版-2.99.99-MC26.3 --launcher PCL.exe
 ```
 
 Windows 验证会实际运行随附 Java 的 `--version` 和 `--dry-run`，检查全部 classpath 文件与游戏主类；此检查不等同于真实账号登录或图形界面游戏启动。

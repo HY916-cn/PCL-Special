@@ -27,11 +27,49 @@ jobs:
         env:
           PCL_CURSEFORGE_API_KEY: ${{ secrets.PCL_CURSEFORGE_API_KEY }}
         run: ./tools/Build.ps1
+      - name: Build and verify single-file editions
+        shell: pwsh
+        run: ./tools/BuildSingleFile.ps1
       - name: Verify Windows download and update behavior
         shell: pwsh
         env:
           PCL_EXPECT_CURSEFORGE_KEY: 'true'
         run: ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL特别版-2.99.99.exe -WorkDirectory ./artifacts/smoke
+      - name: Verify single-file launcher window
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $PWD 'artifacts/single-file/full-check'
+          $entry = Join-Path $base 'PCL联机版-2.99.99.exe'
+          $childDirectory = Join-Path $base 'PCL联机版-2.99.99'
+          $childPath = Join-Path $childDirectory 'PCL特别版-2.99.99.exe'
+          $entryProcess = Start-Process -FilePath $entry -WorkingDirectory $base -PassThru
+          $child = $null
+          try {
+            if (-not $entryProcess.WaitForExit(60000)) { throw 'Single-file entry did not finish opening the launcher.' }
+            if ($entryProcess.ExitCode -ne 0) { throw "Single-file entry failed: $($entryProcess.ExitCode)" }
+            $deadline = [DateTime]::UtcNow.AddSeconds(30)
+            $loaded = $false
+            while ([DateTime]::UtcNow -lt $deadline) {
+              $child = Get-Process -Name 'PCL特别版-2.99.99' -ErrorAction SilentlyContinue | Where-Object Path -eq $childPath | Select-Object -First 1
+              if ($null -ne $child) {
+                $child.Refresh()
+                $logPath = Join-Path $childDirectory 'PCLHY916Fixed/Log1.txt'
+                $log = if (Test-Path $logPath) { Get-Content -LiteralPath $logPath -Raw -Encoding UTF8 } else { '' }
+                if ($child.MainWindowHandle -ne [IntPtr]::Zero -and $child.MainWindowTitle -eq 'PCL特别版' -and $log.Contains('第三阶段加载用时')) { $loaded = $true; break }
+              }
+              Start-Sleep -Milliseconds 250
+            }
+            if (-not $loaded) { throw 'The single-file entry did not display the launcher window.' }
+            $reportPath = Join-Path $PWD 'artifacts/single-file/result.json'
+            $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+            $report | Add-Member -NotePropertyName guiStartup -NotePropertyValue 'default entry opened the actual launcher main window; EULA left untouched'
+            $report | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $reportPath -Encoding UTF8
+          } finally {
+            if (-not $entryProcess.HasExited) { $entryProcess.Kill(); $entryProcess.WaitForExit() }
+            if ($null -ne $child -and -not $child.HasExited) { $child.Kill(); $child.WaitForExit() }
+            $entryProcess.Dispose()
+          }
       - name: Verify supplied Minecraft and Java on Windows
         shell: pwsh
         run: |
@@ -46,6 +84,9 @@ jobs:
           retention-days: 30
           path: |
             dist/*
+            artifacts/single-file/PCLPackageStub.exe
+            artifacts/single-file/result.json
+            artifacts/single-file/full-check/**/Log*.txt
             artifacts/portable-result.json
             artifacts/smoke/smoke-result.json
             artifacts/smoke/*.log

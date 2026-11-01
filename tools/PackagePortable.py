@@ -61,7 +61,7 @@ def package(minecraft, dist, output):
         path.write_bytes(text.encode("utf-8"))
     (stage / "开始使用.txt").write_text(
         "PCL便携版 2.99.99 · Minecraft 26.3\n制作开发者：Haoyu Huang\n\n"
-        "适用：Windows x64、.NET Framework 4.8。完整解压到独立文件夹后，双击 PCL.exe，再点击“启动游戏”。\n"
+        "适用：Windows x64、.NET Framework 4.8。在已准备的文件夹中双击 PCL.exe，再点击“启动游戏”。\n"
         "首次请自行确认用户协议，在“正版”中使用拥有 Minecraft Java 版的微软账号登录，然后点击“启动游戏”。\n"
         "启动器已预选 26.3 并配置随附 Java；以后打开 PCL.exe，点击“启动游戏”即可。\n"
         "游戏、Windows 支持库、完整资源和 Java 25.0.1 已随包提供；联机模块首次使用时从本地安装。\n"
