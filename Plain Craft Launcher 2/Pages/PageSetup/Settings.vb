@@ -353,10 +353,17 @@ Public Class Settings
                     Try
                         GotValue = DesDecrypt(GotValue, "PCL" & Identify)
                     Catch ex As Exception
-                        Logger.Warn(ex, $"解密设置失败：{Key}")
-                        GotValue = Entry.DefaultValue
-                        Entry.Set(Entry.DefaultValue, Instance)
-                        Entry.Save(Instance)
+                        Try
+                            '兼容使用默认设备识别码保存的特别版设置，并按当前设备重新保存。
+                            GotValue = DesDecrypt(GotValue, "PCL0000-0000-0000-0000")
+                            Entry.Set(CTypeDynamic(GotValue, Entry.Type), Instance)
+                            Entry.Save(Instance)
+                        Catch
+                            Logger.Warn(ex, $"解密设置失败：{Key}")
+                            GotValue = Entry.DefaultValue
+                            Entry.Set(Entry.DefaultValue, Instance)
+                            Entry.Save(Instance)
+                        End Try
                     End Try
                 End If
             End If

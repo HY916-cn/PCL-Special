@@ -24,9 +24,13 @@ jobs:
           msbuild-architecture: x64
       - name: Build and package
         shell: pwsh
+        env:
+          PCL_CURSEFORGE_API_KEY: ${{ secrets.PCL_CURSEFORGE_API_KEY }}
         run: ./tools/Build.ps1
       - name: Verify Windows download and update behavior
         shell: pwsh
+        env:
+          PCL_EXPECT_CURSEFORGE_KEY: 'true'
         run: ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL特别版-2.99.0.1.exe -WorkDirectory ./artifacts/smoke
       - name: Upload packages and verification
         if: always()

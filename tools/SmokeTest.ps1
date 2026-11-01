@@ -27,6 +27,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Resources;
@@ -48,6 +49,7 @@ public static class PclSmokeRunner {
     private static Dictionary<string, object> themeResult;
     private static Dictionary<string, object> toolboxResult;
     private static Dictionary<string, object> sourcePolicyResult;
+    private static Dictionary<string, object> curseForgeResult;
     private const BindingFlags StaticMembers = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
 
     private static object Invoke(Type type, string name, params object[] arguments) {
@@ -215,7 +217,52 @@ public static class PclSmokeRunner {
         }
     }
 
+    private static void CheckDeviceIdentity() {
+        Type secret = pcl.GetType("PCL.ModSecret", true);
+        Type basis = pcl.GetType("PCL.ModBase", true);
+        Type settings = pcl.GetType("PCL.Settings", true);
+        string code = (string)basis.GetField("Identify", StaticMembers).GetValue(null);
+        Require(code != "0000-0000-0000-0000" && code.Length == 19,
+            "Device identity must be a real local code in the original format.");
+        Require((string)Invoke(secret, "GetIdentify") == code && (string)Invoke(secret, "GetIdentify") == code,
+            "Device identity changed for the same device and persisted local seed.");
+        string board;
+        try {
+            object boardValue;
+            try { boardValue = Microsoft.Win32.Registry.GetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\HardwareConfig", "LastConfig", "Unknown") ?? "Unknown"; }
+            catch { boardValue = "Unknown"; }
+            board = boardValue.ToString() == "__NULL__" ? "Unknown" : boardValue.ToString().ToUpperInvariant().Trim('{', '}');
+        } catch { board = "Unknown"; }
+        string seed = (string)Invoke(settings, "Get", "Identify", null);
+        Require(seed.Length >= 3, "Device identity did not persist its local seed.");
+        ulong hash = 5381;
+        unchecked { foreach (char value in board + seed) hash = (hash << 5) ^ hash ^ value; }
+        string raw = (hash ^ 0xA98F501BC684032FUL).ToString("X").PadLeft(16, '7');
+        string expected = raw.Substring(4, 4) + "-" + raw.Substring(12, 4) + "-" + raw.Substring(0, 4) + "-" + raw.Substring(8, 4);
+        Require(code == expected, "Device identity differs from the original public 2.99.0.1 algorithm.");
+
+        const string key = "LoginLegacyName";
+        const string fixture = "PCL migration fixture";
+        string oldCipher = (string)Invoke(settings, "DesEncrypt", fixture, "PCL0000-0000-0000-0000");
+        Invoke(basis, "WriteIni", "Setup", key, oldCipher);
+        IDictionary entries = (IDictionary)settings.GetField("Entries", StaticMembers).GetValue(null);
+        object entry = entries[key];
+        object cache = entry.GetType().GetField("ValueCache").GetValue(entry);
+        cache.GetType().GetMethod("Clear").Invoke(cache, null);
+        Require((string)Invoke(settings, "Get", key, null) == fixture,
+            "Encrypted settings from the previous device identity were not preserved.");
+        string newCipher = (string)Invoke(basis, "ReadIni", "Setup", key, "");
+        Require(newCipher != oldCipher && (string)Invoke(settings, "DesDecrypt", newCipher, "PCL" + code) == fixture,
+            "Legacy encrypted settings were not migrated to the current device identity.");
+        cache.GetType().GetMethod("Clear").Invoke(cache, null);
+        Require((string)Invoke(settings, "Get", key, null) == fixture,
+            "Migrated settings were not readable on a fresh load.");
+        Invoke(settings, "Reset", key, null);
+        Console.WriteLine("PASS: original local device identity, persistent seed, and encrypted-settings migration.");
+    }
+
     private static void CheckToolbox(string work) {
+        CheckDeviceIdentity();
         Type toolbox = pcl.GetType("PCL.PageOtherTest", true);
         DateTime day = new DateTime(2026, 10, 31);
         int score = Convert.ToInt32(Invoke(toolbox, "GetDailyScore", day, "PCL-Smoke-Test"));
@@ -255,10 +302,70 @@ public static class PclSmokeRunner {
         toolboxResult = new Dictionary<string, object> {
             { "passed", true }, { "referenceEdition", "public PCL 2.99.0.1" },
             { "dailyScoreStable", true }, { "dailyScore", score }, { "randomCaveNonEmpty", true },
+            { "localDeviceIdentity", true }, { "publicIdentityAlgorithm", true }, { "legacyEncryptedSettingsMigrated", true },
             { "customHintFile", true }, { "presetHintsNonEmpty", true }, { "colorEffectsApplied", true },
             { "cleanupExecuted", false }, { "memoryOptimizationExecuted", false }, { "windowPranksExecuted", false }
         };
         Console.WriteLine("PASS: original toolbox entries, daily score, cave text, custom/preset hints, and prank color effects.");
+    }
+
+    private static void CheckCurseForge() {
+        Type secret = pcl.GetType("PCL.ModSecret", true);
+        FieldInfo key = secret.GetField("CurseForgeAPIKey", StaticMembers);
+        string saved = (string)key.GetValue(null);
+        bool embedded = !String.IsNullOrWhiteSpace((string)secret.GetField("DefaultCurseForgeAPIKey", StaticMembers).GetRawConstantValue());
+        if (Environment.GetEnvironmentVariable("PCL_EXPECT_CURSEFORGE_KEY") == "true")
+            Require(embedded, "The release build is missing its shared CurseForge API key.");
+        MethodInfo sign = secret.GetMethod("SecretHeadersSign", StaticMembers);
+        try {
+            key.SetValue(null, "pcl-smoke-key");
+            foreach (string url in new string[] {
+                "https://api.curseforge.com/v1/mods/238222",
+                "https://API.CURSEFORGE.COM/v1/mods/238222",
+                "https://edge.forgecdn.net/files/1/test.jar" }) {
+                using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url)) {
+                    sign.Invoke(null, new object[] { url, request, false });
+                    Require(request.Headers.GetValues("x-api-key").Single() == "pcl-smoke-key", "CurseForge authentication header was not applied.");
+                }
+            }
+            foreach (string url in new string[] {
+                "http://api.curseforge.com/v1/mods/238222",
+                "https://api.curseforge.com.example.org/v1/mods/238222",
+                "https://example.org/?url=api.curseforge.com",
+                "https://example.org/forgecdn.net/test.jar",
+                "https://mod.mcimirror.top/curseforge/v1/mods/238222" }) {
+                using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url)) {
+                    sign.Invoke(null, new object[] { url, request, false });
+                    Require(!request.Headers.Contains("x-api-key"), "CurseForge key was attached to an unrelated or insecure URL.");
+                }
+            }
+            key.SetValue(null, "");
+            using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, "https://api.curseforge.com/v1/mods/238222")) {
+                sign.Invoke(null, new object[] { request.RequestUri.AbsoluteUri, request, false });
+                Require(!request.Headers.Contains("x-api-key"), "An empty API key was sent.");
+            }
+        } finally { key.SetValue(null, saved); }
+        bool officialVerified = false;
+        if (embedded) {
+            using (HttpClientHandler handler = new HttpClientHandler { AllowAutoRedirect = false })
+            using (HttpClient client = new HttpClient(handler))
+            using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, "https://api.curseforge.com/v1/mods/238222")) {
+                client.Timeout = TimeSpan.FromSeconds(30);
+                sign.Invoke(null, new object[] { request.RequestUri.AbsoluteUri, request, false });
+                using (HttpResponseMessage response = client.SendAsync(request).GetAwaiter().GetResult()) {
+                    Require(response.StatusCode == HttpStatusCode.OK, "CurseForge official API returned HTTP " + (int)response.StatusCode + ".");
+                    JavaScriptSerializer serializer = new JavaScriptSerializer();
+                    Dictionary<string, object> body = serializer.Deserialize<Dictionary<string, object>>(response.Content.ReadAsStringAsync().GetAwaiter().GetResult());
+                    Require(Convert.ToInt32(((Dictionary<string, object>)body["data"])["id"]) == 238222, "CurseForge returned the wrong mod.");
+                    officialVerified = true;
+                }
+            }
+        }
+        curseForgeResult = new Dictionary<string, object> {
+            { "embeddedSharedKey", embedded }, { "headerHostAndTlsChecks", true },
+            { "officialApiVerified", officialVerified }, { "testModId", 238222 }, { "keyDisclosed", false }
+        };
+        Console.WriteLine("PASS: CurseForge credential routing and official API verification.");
     }
 
     private static void CheckMicrosoftPollingRules() {
@@ -533,7 +640,8 @@ public static class PclSmokeRunner {
             { "settingsStorage", "isolated default settings in local Setup.ini" },
             { "downloadRestriction", false }, { "updateMethods", "verified no-op IL" },
             { "fixedSettings", "Set and Reset preserve updates=3, announcements=2, telemetry=false" },
-            { "themes", themeResult }, { "toolbox", toolboxResult }, { "microsoftLogin", loginResult }
+            { "themes", themeResult }, { "toolbox", toolboxResult }, { "microsoftLogin", loginResult },
+            { "curseForge", curseForgeResult }
         };
         File.WriteAllText(Path.Combine(work, "smoke-result.json"), serializer.Serialize(report));
         Console.WriteLine("PASS: PCL resolved Minecraft 1.0, downloaded JSON and client JAR, and verified size/SHA-1.");
@@ -551,6 +659,7 @@ public static class PclSmokeRunner {
             Environment.SetEnvironmentVariable("TEMP", temp);
             Environment.SetEnvironmentVariable("TMP", temp);
             Environment.SetEnvironmentVariable("PCL_MS_CLIENT_ID", null);
+            Environment.SetEnvironmentVariable("PCL_CURSEFORGE_API_KEY", null);
             pcl = Assembly.LoadFrom(args[0]);
             resources = new ResourceManager("PCL.Resources", pcl);
             AppDomain.CurrentDomain.AssemblyResolve += ResolveLibrary;
@@ -585,7 +694,7 @@ public static class PclSmokeRunner {
             Exception failure = null;
             bool finished = false;
             Thread worker = new Thread(delegate() {
-                try { DownloadTest(work); }
+                try { CheckCurseForge(); DownloadTest(work); }
                 catch (Exception ex) { failure = ex; }
                 finally { Volatile.Write(ref finished, true); }
             });
@@ -616,7 +725,7 @@ $framework = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
 $reference = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
 $compiler = Join-Path $framework 'csc.exe'
 $runner = Join-Path $work 'SmokeRunner.exe'
-& $compiler /nologo /target:exe "/out:$runner" "/reference:$reference\PresentationFramework.dll" "/reference:$reference\PresentationCore.dll" "/reference:$reference\WindowsBase.dll" "/reference:$reference\System.Xaml.dll" $sourcePath
+& $compiler /nologo /target:exe "/out:$runner" "/reference:$reference\PresentationFramework.dll" "/reference:$reference\PresentationCore.dll" "/reference:$reference\WindowsBase.dll" "/reference:$reference\System.Xaml.dll" "/reference:$reference\System.Net.Http.dll" $sourcePath
 if ($LASTEXITCODE -ne 0) { throw 'Smoke test runner compilation failed.' }
 & $runner $testExecutable
 if ($LASTEXITCODE -ne 0) { throw "PCL smoke test failed with exit code $LASTEXITCODE." }

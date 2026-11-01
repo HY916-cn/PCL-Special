@@ -10,8 +10,10 @@ Friend Module ModSecret
     Public Const DefaultOAuthClientId As String = "fe72edc2-3a6f-4280-90e8-e2beb64ce7e1"
     Public OAuthClientId As String = If(String.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PCL_MS_CLIENT_ID")),
                                       DefaultOAuthClientId, Environment.GetEnvironmentVariable("PCL_MS_CLIENT_ID").Trim())
-    'CurseForge API Key
-    Public CurseForgeAPIKey As String = If(Environment.GetEnvironmentVariable("PCL_CURSEFORGE_API_KEY"), "")
+    '发行构建从受保护的构建环境注入；本地环境变量可覆盖。
+    Public Const DefaultCurseForgeAPIKey As String = ""
+    Public CurseForgeAPIKey As String = If(String.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PCL_CURSEFORGE_API_KEY")),
+                                         DefaultCurseForgeAPIKey, Environment.GetEnvironmentVariable("PCL_CURSEFORGE_API_KEY").Trim())
 
 #Region "网络鉴权"
 
@@ -34,7 +36,14 @@ Friend Module ModSecret
             End If
         End If
         If Not SimulateBrowserHeaders Then Req.Headers.Add("Referer", $"http://{VersionCode}.open.pcl2.server/")
-        If Url.Contains("api.curseforge.com") OrElse Url.Contains("forgecdn.net") Then Req.Headers.Add("x-api-key", CurseForgeAPIKey)
+        Dim Target As Uri = Nothing
+        If Not String.IsNullOrWhiteSpace(CurseForgeAPIKey) AndAlso Uri.TryCreate(Url, UriKind.Absolute, Target) AndAlso
+           Target.Scheme = Uri.UriSchemeHttps AndAlso
+           (Target.Host.Equals("api.curseforge.com", StringComparison.OrdinalIgnoreCase) OrElse
+            Target.Host.Equals("forgecdn.net", StringComparison.OrdinalIgnoreCase) OrElse
+            Target.Host.EndsWith(".forgecdn.net", StringComparison.OrdinalIgnoreCase)) Then
+            Req.Headers.Add("x-api-key", CurseForgeAPIKey)
+        End If
     End Sub
 
 #End Region
@@ -266,7 +275,30 @@ Friend Module ModSecret
     ''' 获取设备识别码。
     ''' </summary>
     Friend Function GetIdentify() As String
-        Return "0000-0000-0000-0000"
+        Try
+            If ApplicationStartTick < 1 Then Return "0000-0000-0000-0000"
+            Dim BoardCode As String
+            Try
+                BoardCode = RegistryUtils.TryRead("HKEY_LOCAL_MACHINE\SYSTEM\HardwareConfig", "LastConfig", "Unknown").ToString().Upper().Trim("{"c, "}"c)
+            Catch ex As Exception
+                Logger.Warn(ex, "获取主板标识码失败", LogBehavior.ToastIfDebug)
+                BoardCode = "Unknown"
+            End Try
+            Dim LocalSeed As String = ""
+            Try
+                LocalSeed = Settings.Get(Of String)("Identify")
+            Catch
+            End Try
+            If LocalSeed.Length < 3 Then
+                LocalSeed = CStr(GetTimeMs()) & CStr(My.Computer.Info.AvailablePhysicalMemory)
+                Settings.Set("Identify", LocalSeed)
+            End If
+            Dim Code = (BoardCode & LocalSeed).GetStableHashCode().ToString("X").EnsureLength("7"c, 16)
+            Return $"{Code.Substring(4, 4)}-{Code.Substring(12, 4)}-{Code.Substring(0, 4)}-{Code.Substring(8, 4)}"
+        Catch ex As Exception
+            Logger.Error(ex, "PCL 无法获取设备识别码，这可能会导致部分设置无法正常存储。", LogBehavior.Alert)
+            Return "0000-0000-0000-0000"
+        End Try
     End Function
 
 #End Region

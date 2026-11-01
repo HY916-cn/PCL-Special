@@ -3,10 +3,28 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
 try {
-    dotnet restore PCLCS/PCLCS.csproj
-    if ($LASTEXITCODE -ne 0) { throw "NuGet restore failed." }
-    msbuild "Plain Craft Launcher 2/Plain Craft Launcher 2.vbproj" /m /p:Configuration=Release /verbosity:minimal
-    if ($LASTEXITCODE -ne 0) { throw "MSBuild failed." }
+    $secretPath = Join-Path $root "Plain Craft Launcher 2/Modules/ModSecret.vb"
+    $originalSecret = [IO.File]::ReadAllBytes($secretPath)
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($env:PCL_CURSEFORGE_API_KEY)) {
+            $key = $env:PCL_CURSEFORGE_API_KEY.Trim()
+            if ($key -match '["\r\n]') { throw "Invalid CurseForge API key format." }
+            $marker = 'Public Const DefaultCurseForgeAPIKey As String = ""'
+            $secretSource = [IO.File]::ReadAllText($secretPath)
+            if (-not $secretSource.Contains($marker)) { throw "CurseForge build key marker was not found." }
+            $secretSource = $secretSource.Replace($marker, 'Public Const DefaultCurseForgeAPIKey As String = "' + $key + '"')
+            [IO.File]::WriteAllText($secretPath, $secretSource, [Text.UTF8Encoding]::new($false))
+        }
+        dotnet restore PCLCS/PCLCS.csproj
+        if ($LASTEXITCODE -ne 0) { throw "NuGet restore failed." }
+        msbuild "Plain Craft Launcher 2/Plain Craft Launcher 2.vbproj" /m /p:Configuration=Release /verbosity:minimal
+        if ($LASTEXITCODE -ne 0) { throw "MSBuild failed." }
+    } finally {
+        # Restore the source before creating the source archive, including on build failure.
+        [IO.File]::WriteAllBytes($secretPath, $originalSecret)
+        $key = $null
+        $secretSource = $null
+    }
 
     $output = [IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
     New-Item -ItemType Directory -Force $output | Out-Null
