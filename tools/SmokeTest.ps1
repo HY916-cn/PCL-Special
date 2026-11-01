@@ -27,6 +27,7 @@ $source = @'
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -53,6 +54,7 @@ public static class PclSmokeRunner {
     private static Dictionary<string, object> toolboxResult;
     private static Dictionary<string, object> sourcePolicyResult;
     private static Dictionary<string, object> curseForgeResult;
+    private static Dictionary<string, object> multiplayerResult;
     private const BindingFlags StaticMembers = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
 
     private static object Invoke(Type type, string name, params object[] arguments) {
@@ -395,6 +397,206 @@ public static class PclSmokeRunner {
             "PASS: CurseForge credential routing; official API verification skipped without an embedded key.");
     }
 
+    private static int FreeLinkPort() {
+        while (true) {
+            TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+            if (port < 65534) return port;
+        }
+    }
+
+    private static Process StartLinkCore(string file, string arguments, string log) {
+        Process process = new Process { StartInfo = new ProcessStartInfo {
+            FileName = file, Arguments = arguments, WorkingDirectory = Path.GetDirectoryName(file),
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+            RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
+        }};
+        object gate = new object();
+        DataReceivedEventHandler handler = delegate(object sender, DataReceivedEventArgs e) {
+            if (e.Data != null) lock (gate) File.AppendAllText(log, e.Data + Environment.NewLine);
+        };
+        process.OutputDataReceived += handler;
+        process.ErrorDataReceived += handler;
+        Require(process.Start(), "EasyTier native process did not start.");
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        return process;
+    }
+
+    private static List<Dictionary<string, object>> LinkPeers(string file, int rpc) {
+        using (Process process = new Process { StartInfo = new ProcessStartInfo {
+            FileName = file, Arguments = "-o json -p 127.0.0.1:" + rpc + " peer",
+            WorkingDirectory = Path.GetDirectoryName(file), UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
+        }}) {
+            process.Start();
+            var output = process.StandardOutput.ReadToEndAsync();
+            var errors = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(5000)) { process.Kill(); process.WaitForExit(); throw new TimeoutException("EasyTier CLI timed out."); }
+            Require(process.ExitCode == 0, "EasyTier CLI returned an error.");
+            errors.GetAwaiter().GetResult();
+            return new JavaScriptSerializer().Deserialize<List<Dictionary<string, object>>>(output.GetAwaiter().GetResult());
+        }
+    }
+
+    private static void CheckMultiplayer(string work) {
+        Type link = pcl.GetType("PCL.PageLinkMain", true);
+        Type settings = pcl.GetType("PCL.Settings", true);
+        IDictionary settingEntries = (IDictionary)settings.GetField("Entries", StaticMembers).GetValue(null);
+        foreach (string settingKey in new string[] { "UiHiddenPageLink", "UiHiddenSetupLink" }) {
+            object entry = settingEntries[settingKey];
+            object cache = entry.GetType().GetField("ValueCache").GetValue(entry);
+            cache.GetType().GetMethod("Clear").Invoke(cache, null);
+        }
+        Require(!Convert.ToBoolean(Invoke(settings, "Get", "UiHiddenPageLink", null)) &&
+            !Convert.ToBoolean(Invoke(settings, "Get", "UiHiddenSetupLink", null)), "Multiplayer entry is hidden by default.");
+        foreach (string code in new string[] { "P63DD-ABCDE-12345-0205E", "P63DD-ABCDE-12345", "【P63DD-ABCDE-12345-0205E】" })
+            Require(Invoke(link, "ValidateCodeFormat", code) == null, "A supported original invitation was rejected.");
+        foreach (string code in new string[] { "", "P0001-A-B", "P63DD-ABCDE-12345-99FFF", "P0001-ABCDE-12345-0205E", "P63DD-ABCDE-12345-02GGG", "P63DD-ABCDE-12345-0205E --bad" })
+            Require(Invoke(link, "ValidateCodeFormat", code) != null, "A malformed invitation was accepted.");
+
+        string module = Path.Combine(work, "EasyTier-2.6.4");
+        object package = Invoke(link, "GetModulePackage", "x86_64", module);
+        Type packageType = package.GetType();
+        string archive = (string)packageType.GetField("LocalName").GetValue(package);
+        object checker = packageType.GetField("Check").GetValue(package);
+        string[] urls = ((IEnumerable)packageType.GetField("Sources").GetValue(package)).Cast<object>()
+            .Select(s => (string)s.GetType().GetField("Url").GetValue(s)).ToArray();
+        Invoke(pcl.GetType("PCL.ModNet", true), "NetDownloadByLoader", urls, archive, null, checker, false);
+        string archiveHash;
+        using (SHA256 sha = SHA256.Create())
+        using (FileStream stream = File.OpenRead(archive))
+            archiveHash = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
+        Require(archiveHash == "27af91e270e554709b048bd32327fefd2dfce5062ae1e8701af7550c6f525f84", "Native module archive failed its pinned SHA-256.");
+        string corrupt = Path.Combine(work, "corrupt-link.zip");
+        File.WriteAllText(corrupt, "PCL invalid module test");
+        bool rejected = false;
+        try { Invoke(link, "InstallModule", corrupt, Path.Combine(work, "rejected-link"), "x86_64"); }
+        catch { rejected = true; }
+        Require(rejected, "An unverified multiplayer module was installed.");
+        Invoke(link, "InstallModule", archive, module, "x86_64");
+        string core = Path.Combine(module, "联机模块.exe");
+        string cli = Path.Combine(module, "联机模块 CLI.exe");
+        Require(File.Exists(core) && File.Exists(cli), "Native module executables were not installed.");
+
+        TcpListener echo = new TcpListener(IPAddress.Loopback, 0);
+        echo.Start();
+        int game = ((IPEndPoint)echo.LocalEndpoint).Port;
+        UdpClient udpEcho = new UdpClient(new IPEndPoint(IPAddress.Loopback, game));
+        Thread tcpThread = new Thread(delegate() {
+            try { while (true) using (TcpClient client = echo.AcceptTcpClient()) {
+                client.ReceiveTimeout = 5000;
+                byte[] data = new byte[1024];
+                NetworkStream stream = client.GetStream();
+                int count;
+                while ((count = stream.Read(data, 0, data.Length)) > 0) stream.Write(data, 0, count);
+            }} catch (SocketException) {} catch (ObjectDisposedException) {} catch (IOException) {}
+        });
+        tcpThread.IsBackground = true;
+        tcpThread.Start();
+        Thread udpThread = new Thread(delegate() {
+            try { while (true) { IPEndPoint sender = null; byte[] data = udpEcho.Receive(ref sender); udpEcho.Send(data, data.Length, sender); } }
+            catch (SocketException) {} catch (ObjectDisposedException) {}
+        });
+        udpThread.IsBackground = true;
+        udpThread.Start();
+        HashSet<int> ports = new HashSet<int> { game };
+        Func<int> nextPort = delegate() { int port; do { port = FreeLinkPort(); } while (!ports.Add(port)); return port; };
+        int hostRpc = nextPort(), clientRpc = nextPort(), hostListen = nextPort(), clientListen = nextPort(), forward = nextPort();
+        string room = "P" + game.ToString("X4") + "-ABCDE";
+        string hostArgs = (string)Invoke(link, "BuildLinkArguments", true, game, forward, hostRpc, hostListen, room, "12345", "Server-SMOKE",
+            new string[] { "tcp://127.0.0.1:" + clientListen }, false);
+        string clientArgs = (string)Invoke(link, "BuildLinkArguments", false, game, forward, clientRpc, clientListen, room, "12345", "Client-SMOKE",
+            new string[] { "tcp://127.0.0.1:" + hostListen }, false);
+        foreach (string peer in new string[] { "tcp://127.0.0.1:1\" --bad", "http://example.org:80", "tcp://127.0.0.1:1\r\n--bad" }) {
+            rejected = false;
+            try { Invoke(link, "BuildLinkArguments", true, game, forward, hostRpc, hostListen, room, "12345", "Server-SMOKE", new string[] { peer }, false); }
+            catch { rejected = true; }
+            Require(rejected, "Unsafe custom peer arguments were accepted.");
+        }
+        Require(hostArgs.Contains("--rpc-portal 127.0.0.1:") && clientArgs.Contains("--tcp-whitelist=0") &&
+            clientArgs.Contains("--port-forward udp://127.0.0.1:"), "Original no-TUN restricted forwarding arguments were not built.");
+        // Keep the transport test on loopback and avoid public STUN traffic.
+        hostArgs = hostArgs.Replace("--listeners " + hostListen, "--listeners tcp://127.0.0.1:" + hostListen) + " --stun-servers --stun-servers-v6";
+        clientArgs = clientArgs.Replace("--listeners " + clientListen, "--listeners tcp://127.0.0.1:" + clientListen) + " --stun-servers --stun-servers-v6";
+        Process host = null, guest = null;
+        try {
+            host = StartLinkCore(core, hostArgs, Path.Combine(work, "link-host.log"));
+            guest = StartLinkCore(core, clientArgs, Path.Combine(work, "link-client.log"));
+            bool ready = false;
+            DateTime deadline = DateTime.UtcNow.AddSeconds(60);
+            while (DateTime.UtcNow < deadline) {
+                Require(!host.HasExited && !guest.HasExited, "A native multiplayer peer exited early.");
+                try {
+                    List<Dictionary<string, object>> peers = LinkPeers(cli, clientRpc);
+                    ready = peers.Any(p => Convert.ToString(p["cost"]) == "Local" && !String.IsNullOrEmpty(Convert.ToString(p["ipv4"]))) &&
+                        peers.Any(p => Convert.ToString(p["ipv4"]) == "10.114.114.114" && Convert.ToString(p["cost"]) != "Local");
+                    if (ready) break;
+                } catch (InvalidOperationException) {}
+                Thread.Sleep(250);
+            }
+            Require(ready, "Native peers did not discover the host and obtain a client IPv4.");
+            byte[] payload = Encoding.UTF8.GetBytes("PCL native multiplayer forwarding check");
+            using (TcpClient client = new TcpClient()) {
+                client.SendTimeout = client.ReceiveTimeout = 5000;
+                client.Connect(IPAddress.Loopback, forward);
+                NetworkStream stream = client.GetStream();
+                stream.Write(payload, 0, payload.Length);
+                byte[] response = new byte[payload.Length];
+                int received = 0;
+                while (received < response.Length) { int count = stream.Read(response, received, response.Length - received); Require(count > 0, "TCP forwarded echo was truncated."); received += count; }
+                Require(payload.SequenceEqual(response), "TCP forwarded data differed from its payload.");
+            }
+            using (UdpClient client = new UdpClient()) {
+                client.Client.ReceiveTimeout = 5000;
+                client.Send(payload, payload.Length, new IPEndPoint(IPAddress.Loopback, forward));
+                IPEndPoint sender = null;
+                Require(payload.SequenceEqual(client.Receive(ref sender)), "UDP forwarded data differed from its payload.");
+            }
+            List<Dictionary<string, object>> publicProbes = new List<Dictionary<string, object>>();
+            foreach (string peerAddress in new string[] { "tcp://mc1.easytier.cn:55558", "tcp://public.easytier.top:11010", "tcp://public.easytier.cn:11010" }) {
+                int probeRpc = nextPort(), probeListen = nextPort();
+                string probeArgs = (string)Invoke(link, "BuildLinkArguments", true, game, forward, probeRpc, probeListen,
+                    "P" + game.ToString("X4") + "-FGHJK", "6789A", "Server-PROBE", new string[] { peerAddress }, false);
+                probeArgs = probeArgs.Replace("--listeners " + probeListen, "--listeners tcp://127.0.0.1:" + probeListen) + " --stun-servers --stun-servers-v6";
+                bool connected = false;
+                using (Process probe = StartLinkCore(core, probeArgs, Path.Combine(work, "link-public-" + publicProbes.Count + ".log"))) {
+                    try {
+                        DateTime probeDeadline = DateTime.UtcNow.AddSeconds(12);
+                        while (DateTime.UtcNow < probeDeadline && !probe.HasExited) {
+                            try { connected = LinkPeers(cli, probeRpc).Any(p => Convert.ToString(p["cost"]) != "Local"); }
+                            catch (InvalidOperationException) {}
+                            if (connected) break;
+                            Thread.Sleep(250);
+                        }
+                    } finally { if (!probe.HasExited) probe.Kill(); probe.WaitForExit(); }
+                }
+                publicProbes.Add(new Dictionary<string, object> { { "endpoint", peerAddress }, { "handshakeVerified", connected } });
+            }
+            multiplayerResult = new Dictionary<string, object> {
+                { "passed", true }, { "easyTierVersion", "2.6.4" }, { "moduleSha256", archiveHash },
+                { "pinnedPackageDownloadedAndInstalled", true }, { "invalidArchiveRejected", true },
+                { "invitationValidation", true }, { "customPeerValidation", true }, { "localRpcOnly", true },
+                { "clientDhcpReady", true }, { "nativeCliSchema", true }, { "tcpForwardEcho", true }, { "udpForwardEcho", true },
+                { "transport", "two native processes over loopback TCP using production argument builder" },
+                { "wanNatTraversalTested", false }, { "publicNodeHandshakes", publicProbes },
+                { "publicRelayConnectionTested", publicProbes.Any(p => (bool)p["handshakeVerified"]) }
+            };
+            Console.WriteLine("PASS: pinned multiplayer module installation, native CLI, and two-peer TCP/UDP forwarding.");
+        } finally {
+            foreach (Process process in new Process[] { guest, host }) if (process != null) {
+                try { if (!process.HasExited) process.Kill(); process.WaitForExit(); } finally { process.Dispose(); }
+            }
+            echo.Stop();
+            udpEcho.Close();
+            tcpThread.Join(2000);
+            udpThread.Join(2000);
+        }
+    }
+
     private static void CheckMicrosoftPollingRules() {
         Type login = pcl.GetType("PCL.MyMsgLogin", true);
         MethodInfo initial = login.GetMethod("GetPollingIntervalSeconds", StaticMembers);
@@ -668,7 +870,7 @@ public static class PclSmokeRunner {
             { "downloadRestriction", false }, { "updateMethods", "verified no-op IL" },
             { "fixedSettings", "Set and Reset preserve updates=3, announcements=2, telemetry=false" },
             { "themes", themeResult }, { "toolbox", toolboxResult }, { "microsoftLogin", loginResult },
-            { "curseForge", curseForgeResult }
+            { "curseForge", curseForgeResult }, { "multiplayer", multiplayerResult }
         };
         File.WriteAllText(Path.Combine(work, "smoke-result.json"), serializer.Serialize(report));
         Console.WriteLine("PASS: PCL resolved Minecraft 1.0, downloaded JSON and client JAR, and verified size/SHA-1.");
@@ -721,7 +923,7 @@ public static class PclSmokeRunner {
             Exception failure = null;
             bool finished = false;
             Thread worker = new Thread(delegate() {
-                try { CheckCurseForge(); DownloadTest(work); }
+                try { CheckCurseForge(); CheckMultiplayer(work); DownloadTest(work); }
                 catch (Exception ex) { failure = ex; }
                 finally { Volatile.Write(ref finished, true); }
             });
