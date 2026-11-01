@@ -134,7 +134,7 @@ Public Class PageLaunchLeft
         If CanAutoLaunch(Args, SelectedName, McLoginAble()) Then
             McLaunchStart(New McLaunchOptions With {.Instance = McInstanceSelected})
         Else
-            Hint("请先填写登录信息，再点击“启动游戏”。", HintType.Blue)
+            Hint("请先填写登录信息，再点击启动游戏。", HintType.Blue)
         End If
     End Sub
 
