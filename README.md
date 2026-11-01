@@ -24,11 +24,19 @@ Minecraft 原版下载不依赖 CurseForge API Key。联机使用本地固定配
 
 启动器不会自行接收或安装后续版本。远端下载服务、API 或文件地址未来若发生变化，仍可能需要手动维护。
 
+## Minecraft 26.3 便携包
+
+`PCL特别版-2.99.99-Minecraft26.3-便携包.zip` 适用于 Windows x64。完整解压后双击 `启动26.3.cmd`，启动器会使用随包游戏目录、预选 26.3 并使用随附的官方 Java 25.0.1。首次需自行确认用户协议，并在“正版”中完成微软账号授权、点击“启动游戏”；之后该入口在账号资料可用时自动启动 26.3。直接打开 `PCL.exe` 可进入常规启动器界面。
+
+包内包含 26.3 原版客户端、Windows 支持库、完整资源文件及 Java；`Minecraft-inventory.json` 记录逐文件下载来源、大小、SHA-1 和 SHA-256。预下载文件均依据官方清单校验。登录、多人服务器等功能仍按需联网；后续模组、资源包或额外组件需要另行下载。包内未预设账号资料或用户名。
+
 ## 中国大陆下载源优化
 
 默认的“自动选择”优先尝试 BMCLAPI 镜像，覆盖游戏本体、资源、支持库、版本描述及映射文件。版本与组件列表在首选源尚未完成时，约 1 秒后并行尝试官方源，先成功的结果继续使用；镜像缺少目标新版本时也会尝试官方数据。
 
 在“设置 → 其他 → 下载”中仍可手动选择镜像优先或官方优先。文件下载沿用原下载器的失败切源、文件大小和已知哈希校验，继续使用原有并发与限速设置。默认 64 线程及不限速即可使用本优化。
+
+有备用源时，连接或读取连续 5 秒无响应会尝试切源；不限速且仅有一个下载线程时，持续 5 秒低于 16 KB/s 也会尝试备用源，最后可用源保留原有重试。BMCLAPI 重定向至支持 HTTP Range 的官方 CDN 后可使用原下载器的分段并发，继续检查大小、分段响应和文件哈希。
 
 镜像服务会自行决定缓存、分发或回源。本次连通性检查中，部分客户端 JAR 的镜像入口重定向到了官方 CDN；因此不能保证所有文件都由国内节点分发。当前测试环境不代表中国大陆各运营商线路，实际速度应在你的网络中测量，不承诺固定提速倍数。
 
@@ -38,13 +46,13 @@ Minecraft 原版下载不依赖 CurseForge API Key。联机使用本地固定配
 
 房主先在 Minecraft 单人游戏暂停菜单中选择“对局域网开放”，记下端口，再在启动器顶部“联机 → 创建房间”输入端口。将生成的邀请码发给朋友，朋友在“联机 → 加入房间”中输入邀请码，连接后在 Minecraft 多人游戏列表中进入房间；正版登录时也可使用页面提供的本地服务器地址。建议参与者使用相同的特别版，游戏版本与模组应互相兼容。
 
-首次使用会下载并校验固定的 [EasyTier 2.6.4](https://github.com/EasyTier/EasyTier/releases/tag/v2.6.4)，各架构 ZIP 的 SHA-256 固定在源码中。后续复用本地模块。使用[无 TUN 模式](https://www.easytier.cn/guide/network/no-root.html)转发所选游戏端口，无需安装虚拟网卡。模块版本由本地代码确定；联机不会接收 PCL 远程配置中的版本门槛或关闭指令。
+Windows x64 发行包在 `LinkModules` 中随附固定的 [EasyTier 2.6.4](https://github.com/EasyTier/EasyTier/releases/tag/v2.6.4) 官方压缩包、对应源码及许可文本，首次联机直接在本地校验安装，后续复用已安装模块。其他架构或缺少随附包时按需下载，并明确显示“正在下载联机模块”；各架构 ZIP 的 SHA-256 固定在源码中。使用[无 TUN 模式](https://www.easytier.cn/guide/network/no-root.html)转发所选游戏端口，无需安装虚拟网卡。模块版本由本地代码确定；联机不会接收 PCL 远程配置中的版本门槛或关闭指令。
 
 默认连接 `tcp://easytier.weiai.org.cn:11010` 与 `tcp://225284.xyz:11010`，使用 [MCTier 公开列出的第三方节点](https://github.com/pmh1314520/MCTier/blob/master/README.md#默认服务与元数据披露)。原 EasyTier Uptime 节点目录已停运（[PCL 社区记录](https://github.com/Meloong-Git/PCL/issues/7557#issuecomment-3538821897)），本版本直接使用内置节点配置。HTTPS 下载仍进行正常证书校验。
 
-更新后请房主重新创建房间，所有参与者使用同一修复包。“设置 → 联机 → 高级设置 → 自定义节点”留空时使用上述内置节点；也可填写自己的 EasyTier 节点，多个地址用逗号分隔，房主与加入者应填写一致。连接等待按实际耗时计时，60 秒内仍未连通会提示重试或配置自定义节点。连接结果仍受双方 NAT、防火墙、网络线路和公共节点状态影响。
+更新后请房主重新创建房间，所有参与者使用同一修复包。“设置 → 联机 → 高级设置 → 自定义节点”留空时使用上述内置节点；也可填写自己的 EasyTier 节点，多个地址用逗号分隔，房主与加入者应填写一致。发现房主并取得本地地址后即可进入房间，EasyTier 在后台继续优化连接。连接等待按实际耗时计时，60 秒内仍未连通会提示重试或配置自定义节点。连接结果仍受双方 NAT、防火墙、网络线路和公共节点状态影响。
 
-验证脚本使用实际 Windows 模块下载器、安装函数和启动参数，检查本地双端 TCP/UDP 转发，再用两个原生进程经公网节点强制中继，核验 TCP/UDP 数据回显；至少一个内置节点完成双协议数据转发才算通过。测试进程位于同一运行环境，跨运营商 NAT 穿透仍需实地验证。
+验证脚本使用随附 Windows 模块的离线安装函数和实际启动参数，检查本地双端 TCP/UDP 转发，再用两个原生进程经公网节点强制中继，核验 TCP/UDP 数据回显；至少一个内置节点完成双协议数据转发才算通过。测试进程位于同一运行环境，跨运营商 NAT 穿透仍需实地验证。
 
 ## 微软正版登录
 
@@ -86,7 +94,17 @@ Windows 安装 Visual Studio 2022 Build Tools（.NET 桌面开发、.NET Framewo
 pwsh -NoProfile -File ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL特别版-2.99.99.exe -WorkDirectory ./artifacts/smoke
 ```
 
-`dist` 目录包含程序、Windows 压缩包、源码压缩包与 SHA-256 校验文件。
+`dist` 目录包含程序、Windows 压缩包、源码压缩包、随附联机模块与 SHA-256 校验文件。
+
+准备完整便携包（需要 Python 3.9+）后，可在 Windows 上执行 Java 与游戏主类加载检查：
+
+```powershell
+python ./tools/PrepareMinecraft.py --output ./artifacts/minecraft-26.3
+./tools/VerifyPortable.ps1 -PortableDirectory ./artifacts/minecraft-26.3 -ReportPath ./artifacts/portable-result.json
+python ./tools/PackagePortable.py --minecraft ./artifacts/minecraft-26.3 --dist ./dist --output ./artifacts/portable-package
+```
+
+Windows 验证会实际运行随附 Java 的 `--version` 和 `--dry-run`，检查全部 classpath 文件与游戏主类；此检查不等同于真实账号登录或图形界面游戏启动。
 CurseForge Key 通过受保护的 GitHub Actions Secret 在编译时注入，源码与源码压缩包保留空默认值。本地构建如需内置 Key，请在运行构建脚本前设置进程环境变量 `PCL_CURSEFORGE_API_KEY`；也可在运行启动器时通过该变量提供 Key。
 `SmokeTest.ps1` 在隔离目录内检验实际下载器、文件哈希及更新行为；结果保存为 `smoke-result.json`。
 GitHub Actions 使用 Windows 构建，并固定检出的源代码与 MeloongCore 版本，不同步上游帮助库或源代码。

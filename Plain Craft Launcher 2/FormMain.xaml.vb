@@ -1,4 +1,4 @@
-Imports System.ComponentModel
+﻿Imports System.ComponentModel
 Imports System.Windows.Interop
 
 Public Class FormMain
@@ -438,6 +438,7 @@ Public Class FormMain
             Catch ex As Exception
                 Logger.Error(ex, "初始化加载池运行失败")
             End Try
+            RunInUi(Sub() FrmLaunchLeft.TryAutoLaunchPortable())
             '清理自动更新文件
             Try
                 FileUtils.Delete(Paths.Base & "PCL\Plain Craft Launcher 2.exe")

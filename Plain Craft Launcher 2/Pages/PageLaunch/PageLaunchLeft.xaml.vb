@@ -84,6 +84,7 @@ Public Class PageLaunchLeft
                 RefreshButtonsUI()
                 RefreshPage(False, False) '有可能选择的版本变化了，需要重新刷新
                 If McLoginAble() = "" Then McLoginLoader.Start() '自动登录
+                TryAutoLaunchPortable()
                 '用于自动化测试生成的程序是否可以正常运行
                 If Environment.CommandLine.Contains("--test") Then
                     RunInThread(
@@ -113,6 +114,28 @@ Public Class PageLaunchLeft
         RefreshPage(False, False)
 
         AniControlEnabled -= 1
+    End Sub
+
+    Friend Shared Function CanAutoLaunch(Args As String(), SelectedName As String, LoginError As String) As Boolean
+        If Args Is Nothing OrElse String.IsNullOrEmpty(SelectedName) OrElse
+            Not String.Equals(LoginError, "", StringComparison.Ordinal) Then Return False
+        Dim Requests = Args.Where(Function(Arg) Arg IsNot Nothing AndAlso Arg.StartsWith("--launch=", StringComparison.Ordinal)).ToArray()
+        Return Requests.Length = 1 AndAlso String.Equals(Requests(0), "--launch=" & SelectedName, StringComparison.Ordinal)
+    End Function
+
+    Private AutoLaunchChecked As Boolean
+    Friend Sub TryAutoLaunchPortable()
+        If AutoLaunchChecked OrElse Not IsLoadFinished OrElse IsProgramEnding OrElse
+            Settings.Get(Of Integer)("SystemEulaVersion") < 2 Then Return
+        AutoLaunchChecked = True
+        Dim Args = Environment.GetCommandLineArgs()
+        Dim SelectedName = McInstanceSelected?.Name
+        If Not CanAutoLaunch(Args, SelectedName, "") Then Return
+        If CanAutoLaunch(Args, SelectedName, McLoginAble()) Then
+            McLaunchStart(New McLaunchOptions With {.Instance = McInstanceSelected})
+        Else
+            Hint("请先填写登录信息，再点击“启动游戏”。", HintType.Blue)
+        End If
     End Sub
 
 #Region "切换大页面"

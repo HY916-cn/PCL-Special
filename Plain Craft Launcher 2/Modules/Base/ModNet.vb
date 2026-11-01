@@ -363,6 +363,7 @@ Retry:
         ''' </summary>
         Public SingleThread As NetThread
         Public IsFailed As Boolean
+        Public AllowsOfficialRedirectSplit As Boolean
         Public Overrides Function ToString() As String
             Return Url
         End Function
@@ -625,6 +626,11 @@ Retry:
                 End If
             End SyncLock
         End Function
+        Private Function HasAlternativeSource(Source As NetSource) As Boolean
+            SyncLock LockSource
+                Return Sources.Any(Function(s) s IsNot Source AndAlso Not s.IsFailed)
+            End SyncLock
+        End Function
         ''' <summary>
         ''' 是否存在可用源。
         ''' </summary>
@@ -850,7 +856,7 @@ StartSingleThreadDownload:
                     Dim Source As NetSource = GetSource()
                     If Source Is Nothing Then Return Nothing
                     Dim TargetUrl As String = Source.Url
-                    If TargetUrl.Contains("pcl2-server") OrElse TargetUrl.Contains("meloong.com") OrElse TargetUrl.Contains("bmclapi") OrElse TargetUrl.Contains("github.com") OrElse
+                    If TargetUrl.Contains("pcl2-server") OrElse TargetUrl.Contains("meloong.com") OrElse (TargetUrl.Contains("bmclapi") AndAlso Not Volatile.Read(Source.AllowsOfficialRedirectSplit)) OrElse TargetUrl.Contains("github.com") OrElse
                        TargetUrl.Contains("optifine.net") OrElse TargetUrl.Contains("momot.rs") Then Return Nothing
                     '寻找最大碎片
                     'FUTURE: 下载引擎重做，计算下载源平均链接时间和线程下载速度，按最高时间节省来开启多线程
@@ -907,13 +913,15 @@ StartThread:
             '部分下载源真的特别慢，并且只需要一个请求，例如 Ping 为 20s，如果增长太慢，就会造成类似 2.5s 5s 7.5s 10s 12.5s... 的极大延迟
             '延迟过长会导致某些特别慢的链接迟迟不被掐死
             Dim Timeout As Integer = Math.Min(Math.Max(ConnectAverage, 15000) * (1 + Th.Source.FailCount), 30000)
+            '有备用源时，尽早切换无响应的连接；最后一个可用源保留原有的重试时间。
+            If HasAlternativeSource(Th.Source) Then Timeout = Math.Min(Timeout, 5000)
             Th.State = NetState.Connecting
             Try
                 Dim HttpDataCount As Integer = 0
                 If SourcesOnce.Contains(Th.Source) AndAlso Th <> Th.Source.SingleThread Then GoTo SourceBreak
                 HttpRequest = New HttpRequestMessage(HttpMethod.Get, Th.Source.Url)
                 SecretHeadersSign(Th.Source.Url, HttpRequest, SimulateBrowserHeaders)
-                CancelToken = New CancellationTokenSource(Timeout)
+                CancelToken = New CancellationTokenSource()
                 If Not Th.IsFirstThread Then HttpRequest.Headers.Range = New Headers.RangeHeaderValue(Th.DownloadStart, Nothing)
                 Dim ContentLength As Long = 0
                 Response = ThreadClient.SendAsync(HttpRequest, HttpCompletionOption.ResponseHeadersRead, CancelToken.Token).GetResultWithTimeout(CancelToken, Timeout)
@@ -970,6 +978,7 @@ NotSupportRange:
                 ElseIf Not FileSize - Th.DownloadStart = ContentLength Then
                     Throw New RangeNotSupportedException($"获取到的分段大小不一致：Range 起始于 {Th.DownloadStart}，预期 ContentLength 为 {FileSize - Th.DownloadStart}，返回 ContentLength 为 {ContentLength}，总文件大小 {FileSize}")
                 End If
+                Volatile.Write(Th.Source.AllowsOfficialRedirectSplit, NetCanSplitOfficialRedirect(Th.Source.Url, Response, FileSize, Th.DownloadStart))
                 'Log($"[Download] {LocalName} {Info.Uuid}#：通过大小检查，文件大小 {FileSize}，起始点 {Info.DownloadStart}，ContentLength {ContentLength}")
                 Th.State = NetState.Reading
                 SyncLock LockState
@@ -989,6 +998,8 @@ NotSupportRange:
                 ResponseStream = Response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
                 If Settings.Get(Of Boolean)("SystemDebugDelay") Then Threading.Thread.Sleep(RandomInteger(50, 3000))
                 Dim ResponseBytes As Byte() = New Byte(16384) {}
+                Dim SpeedWindowStart As Long = GetTimeMs(), SpeedWindowDone As Long = Th.DownloadDone
+                Dim SpeedWindowShared As Boolean = NetTaskThreadCount > 1
                 HttpDataCount = ResponseStream.ReadAsync(ResponseBytes, 0, 16384, CancelToken.Token).GetResultWithTimeout(CancelToken, Timeout)
                 While (IsUnknownSize OrElse Th.DownloadUndone > 0) AndAlso '判断是否下载完成
                             HttpDataCount > 0 AndAlso Not IsProgramEnding AndAlso State < NetState.Merging AndAlso (Not Th.Source.IsFailed OrElse Th.Source.SingleThread = Th)
@@ -1027,6 +1038,19 @@ NotSupportRange:
                             Throw New TimeoutException("由于速度过慢断开链接，下载 " & RealDataCount & " B，消耗 " & DeltaTime & " ms。")
                         End If
                         Th.LastReceiveTime = GetTimeMs()
+                        '独占下载时检查持续低速；并发下载和用户限速时不据此判断下载源。
+                        SpeedWindowShared = SpeedWindowShared OrElse NetTaskThreadCount > 1
+                        Dim SpeedWindowTime As Long = Th.LastReceiveTime - SpeedWindowStart
+                        If SpeedWindowTime >= 5000 Then
+                            If Not SpeedWindowShared AndAlso NetTaskSpeedLimitHigh <= 0 AndAlso Th.Source.SingleThread Is Nothing AndAlso
+                               HasAlternativeSource(Th.Source) AndAlso
+                               (Th.DownloadDone - SpeedWindowDone) * 1000L < 16 * 1024L * SpeedWindowTime Then
+                                Throw New TimeoutException("下载源持续低于 16 KB/s，正在切换备用源。")
+                            End If
+                            SpeedWindowStart = Th.LastReceiveTime
+                            SpeedWindowDone = Th.DownloadDone
+                            SpeedWindowShared = NetTaskThreadCount > 1
+                        End If
                     ElseIf Th.LastReceiveTime > 0 AndAlso DeltaTime > Timeout Then
                         '无数据，且已超时
                         Throw New TimeoutException("操作超时，无数据。")
@@ -1077,7 +1101,9 @@ SourceBreak:
             Th.Source.Ex = ex
             '根据情况判断，是否在多线程下禁用下载源（连续错误过多，或不支持断点续传）
             Dim IsRangeNotSupported As Boolean = TypeOf ex Is RangeNotSupportedException OrElse ex.Message.Contains("(416)")
-            If IsMergeFailure OrElse IsRangeNotSupported OrElse
+            Dim IsTimeoutFallback As Boolean = TypeOf ex Is TimeoutException AndAlso HasAlternativeSource(Th.Source)
+            If IsTimeoutFallback OrElse
+               IsMergeFailure OrElse IsRangeNotSupported OrElse
                ex.Message.Contains("(502)") OrElse ex.Message.Contains("(404)") OrElse
                ex.Message.Contains("未能解析") OrElse ex.Message.Contains("无返回数据") OrElse ex.Message.Contains("空间不足") OrElse
                ((ex.Message.Contains("(403)") OrElse ex.Message.Contains("(429)")) AndAlso Not Th.Source.Url.Contains("bmclapi")) OrElse 'BMCLAPI 的部分源在高频率请求下会返回 403/429，所以不应因此禁用下载源
@@ -1085,7 +1111,8 @@ SourceBreak:
                 '当一个下载源有多个线程在下载时，只选择其中一个线程进行后续处理
                 Dim IsThisFail As Boolean = False
                 SyncLock LockSource
-                    If Not Th.Source.IsFailed OrElse Th.Source.SingleThread = Th Then
+                    If (Not Th.Source.IsFailed OrElse Th.Source.SingleThread = Th) AndAlso
+                       (Not IsTimeoutFallback OrElse HasAlternativeSource(Th.Source)) Then
                         IsThisFail = True
                         Th.Source.IsFailed = True
                     End If
@@ -1299,6 +1326,27 @@ Retry:
         End Sub
 
     End Class
+    ''' <summary>BMCLAPI 重定向到支持分段的官方 CDN 时，允许沿用文件分段下载。</summary>
+    Friend Function NetCanSplitOfficialRedirect(SourceUrl As String, Response As HttpResponseMessage, FileSize As Long, RangeStart As Long) As Boolean
+        Dim SourceAddress As Uri = Nothing
+        If FileSize <= 0 OrElse Not Uri.TryCreate(SourceUrl, UriKind.Absolute, SourceAddress) OrElse
+           SourceAddress.Scheme <> Uri.UriSchemeHttps OrElse Not SourceAddress.IsDefaultPort OrElse SourceAddress.UserInfo <> "" OrElse
+           Not {"bmclapi2.bangbang93.com", "bmclapi.bangbang93.com"}.Contains(SourceAddress.Host, StringComparer.OrdinalIgnoreCase) OrElse
+           Response Is Nothing OrElse Response.RequestMessage Is Nothing OrElse Response.RequestMessage.RequestUri Is Nothing OrElse
+           Response.Content Is Nothing Then Return False
+        Dim Target As Uri = Response.RequestMessage.RequestUri
+        If Not Target.IsAbsoluteUri OrElse Target.Scheme <> Uri.UriSchemeHttps OrElse Not Target.IsDefaultPort OrElse Target.UserInfo <> "" OrElse
+           Not {"piston-data.mojang.com", "launcher.mojang.com", "libraries.minecraft.net", "resources.download.minecraft.net"}.Contains(Target.Host, StringComparer.OrdinalIgnoreCase) Then Return False
+        If Response.StatusCode = HttpStatusCode.PartialContent Then
+            Dim Range = Response.Content.Headers.ContentRange
+            Return Range IsNot Nothing AndAlso Range.Unit.Equals("bytes", StringComparison.OrdinalIgnoreCase) AndAlso
+                   Range.HasRange AndAlso Range.HasLength AndAlso Range.From = RangeStart AndAlso
+                   Range.To = FileSize - 1 AndAlso Range.Length = FileSize AndAlso
+                   Response.Content.Headers.ContentLength = FileSize - RangeStart
+        End If
+        Return RangeStart = 0 AndAlso Response.StatusCode = HttpStatusCode.OK AndAlso
+               Response.Headers.AcceptRanges.Contains("bytes", StringComparer.OrdinalIgnoreCase)
+    End Function
     Private Class RangeNotSupportedException
         Inherits HttpRequestException
         Public Sub New(Message As String)

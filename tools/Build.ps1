@@ -29,6 +29,7 @@ try {
     $output = [IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
     New-Item -ItemType Directory -Force $output | Out-Null
     $name = "PCL特别版-2.99.99"
+    & (Join-Path $PSScriptRoot 'PrepareEasyTier.ps1') -OutputDirectory (Join-Path $output 'LinkModules')
     Copy-Item "Plain Craft Launcher 2/obj/Release/Plain Craft Launcher 2.exe" "$output/$name.exe"
     Copy-Item "Plain Craft Launcher 2/App.config" "$output/$name.exe.config"
     Copy-Item README.md "$output/使用说明.md"
@@ -43,7 +44,7 @@ Build commit: $revision
 Upstream: Meloong-Git/PCL 93ede5d9e638c99fcec853a9ba1eecd91ceee7f5
 MeloongCore: $coreRevision
 "@ | Set-Content "$output/SOURCE.txt" -Encoding utf8
-    $files = @("$output/$name.exe", "$output/$name.exe.config", "$output/使用说明.md", "$output/LICENCE", "$output/SOURCE.txt")
+    $files = @("$output/$name.exe", "$output/$name.exe.config", "$output/使用说明.md", "$output/LICENCE", "$output/SOURCE.txt", "$output/LinkModules")
     Compress-Archive -Path $files -DestinationPath "$output/$name-Windows.zip" -Force
 
     $source = Join-Path $root "artifacts/source"
@@ -62,8 +63,8 @@ MeloongCore: $coreRevision
     }
     Copy-Item "$output/SOURCE.txt" "$source/SOURCE.txt"
     Compress-Archive -Path "$source/*" -DestinationPath "$output/$name-Source.zip" -Force
-    Get-ChildItem $output -File | Where-Object Name -ne "SHA256SUMS.txt" |
-        ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name } |
+    Get-ChildItem $output -File -Recurse | Where-Object Name -ne "SHA256SUMS.txt" |
+        ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.FullName.Substring($output.Length + 1).Replace('\', '/') } |
         Set-Content "$output/SHA256SUMS.txt" -Encoding utf8
 } finally {
     Pop-Location

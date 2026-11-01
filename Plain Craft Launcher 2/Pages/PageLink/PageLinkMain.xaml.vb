@@ -476,12 +476,28 @@ Public Class PageLinkMain
         End Try
     End Sub
 
+    Friend Shared Function TryInstallBundledModule(Architecture As String, BundleDirectory As String, Destination As String) As Boolean
+        Dim Archive = Path.Combine(BundleDirectory, $"easytier-windows-{Architecture}-v{EasyTierVersion}.zip")
+        If Not File.Exists(Archive) Then Return False
+        InstallModule(Archive, Destination, Architecture)
+        Dim DownloadArchive = Path.Combine(Destination, "EasyTier.zip")
+        If File.Exists(DownloadArchive) Then File.Delete(DownloadArchive)
+        Return True
+    End Function
+
     '2. 获取需要下载的文件
     Private Sub InitPrepareDownload(Task As LoaderTask(Of Integer, List(Of NetFile)))
         UpdateLoadingPage("正在检查联机模块……", "检查联机模块")
         Dim RequiredFiles As New List(Of NetFile)
         If Not (File.Exists(PathEasyTier & "联机模块.exe") AndAlso File.Exists(PathEasyTier & "联机模块 CLI.exe")) Then
-            RequiredFiles.Add(GetModulePackage(ModuleArchitecture, PathEasyTier))
+            Dim BundleDirectory = Path.Combine(Paths.Base, "LinkModules")
+            If File.Exists(Path.Combine(BundleDirectory, $"easytier-windows-{ModuleArchitecture}-v{EasyTierVersion}.zip")) Then
+                UpdateLoadingPage("正在安装随附联机模块……", "安装随附联机模块")
+                TryInstallBundledModule(ModuleArchitecture, BundleDirectory, PathEasyTier)
+            Else
+                RequiredFiles.Add(GetModulePackage(ModuleArchitecture, PathEasyTier))
+                UpdateLoadingPage("正在下载联机模块……", "下载联机模块")
+            End If
         End If
         Task.Output = RequiredFiles
     End Sub
@@ -573,14 +589,14 @@ Public Class PageLinkMain
         '等待连接
         Dim ConnectionTimer = System.Diagnostics.Stopwatch.StartNew()
         Do
-            Thread.Sleep(500) '为避免还没启动好先跑 CLI 了，先等半秒
+            Thread.Sleep(If(ConnectionTimer.ElapsedMilliseconds < 4000, 200, 500))
             '刷新信息
             CheckCrash()
             RefreshPeerLoader.WaitForExit(IsForceRestart:=True)
             '查找目标节点
             Dim Ping = GetPeerPing()
-            If Ping > 0 AndAlso (IsServerSide OrElse HasLocalAddress) Then
-                Logger.Info($"已与目标建立连接，当前 Ping 为 {Ping:0.0}ms")
+            If Peers IsNot Nothing AndAlso If(IsServerSide, Peers.Any(), HasLocalAddress AndAlso Peers.Any(Function(p) p.Type = Peer.Types.Server)) Then
+                Logger.Info($"联机连接已就绪，当前 Ping 为 {Ping:0.0}ms")
                 Exit Do '退出循环
             End If
             '更新进度
@@ -608,16 +624,7 @@ Public Class PageLinkMain
             End If
         Loop Until Task.IsCanceled
         If Task.IsCanceled Then Throw New OperationCanceledException
-        '等待连接稳定，最多 5s
-        If IsServerSide Then Return
-        UpdateLoadingPage("连接优化中……", "优化连接")
-        Task.Progress = 0.999
-        For i = 1 To 50
-            Dim Server = GetTargetPeer()
-            If Server IsNot Nothing AndAlso Not Server.Relay AndAlso Server.Ping < 100 Then Return '结束
-            If Task.IsCanceled Then Throw New OperationCanceledException
-            Thread.Sleep(100)
-        Next
+        '已发现房主并取得本地地址即可进入游戏，EasyTier 会在后台继续优化连接。
     End Sub
     ''' <summary>
     ''' 当前版本的公共节点。房主与加入者连接同一组节点以发现房间。

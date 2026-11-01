@@ -32,6 +32,12 @@ jobs:
         env:
           PCL_EXPECT_CURSEFORGE_KEY: 'true'
         run: ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL特别版-2.99.99.exe -WorkDirectory ./artifacts/smoke
+      - name: Verify supplied Minecraft and Java on Windows
+        shell: pwsh
+        run: |
+          python ./tools/PrepareMinecraft.py --output ./artifacts/portable-check --skip-assets
+          if ($LASTEXITCODE -ne 0) { throw 'Minecraft preparation failed.' }
+          ./tools/VerifyPortable.ps1 -PortableDirectory ./artifacts/portable-check -ReportPath ./artifacts/portable-result.json
       - name: Upload packages and verification
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -40,6 +46,7 @@ jobs:
           retention-days: 30
           path: |
             dist/*
+            artifacts/portable-result.json
             artifacts/smoke/smoke-result.json
             artifacts/smoke/*.log
             artifacts/smoke/**/Log*.txt

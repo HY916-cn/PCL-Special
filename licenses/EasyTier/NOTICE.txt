@@ -1,0 +1,27 @@
+EasyTier v2.6.4
+
+Upstream project: https://github.com/EasyTier/EasyTier
+Version: v2.6.4
+Source commit: 8428a89d2dabc94c97d370ec607c6ca142473626
+Release: https://github.com/EasyTier/EasyTier/releases/tag/v2.6.4
+
+This package distributes the unmodified upstream Windows x86_64 archive:
+easytier-windows-x86_64-v2.6.4.zip
+Download: https://github.com/EasyTier/EasyTier/releases/download/v2.6.4/easytier-windows-x86_64-v2.6.4.zip
+SHA-256: 27af91e270e554709b048bd32327fefd2dfce5062ae1e8701af7550c6f525f84
+
+The corresponding EasyTier source archive is included alongside it:
+EasyTier-8428a89d2dabc94c97d370ec607c6ca142473626-source.zip
+Download: https://codeload.github.com/EasyTier/EasyTier/zip/8428a89d2dabc94c97d370ec607c6ca142473626
+SHA-256: f1dd7cdad133c521715fa836f8af1b1851f0cdab9360cb897f2e346c36068075
+
+EasyTier is licensed under the GNU Lesser General Public License, version 3.
+The accompanying EasyTier-LGPL-3.0.txt contains the upstream LICENSE verbatim:
+https://raw.githubusercontent.com/EasyTier/EasyTier/v2.6.4/LICENSE
+The accompanying EasyTier-GPL-3.0.txt contains the GNU GPL version 3 text
+incorporated by the LGPL:
+https://www.gnu.org/licenses/gpl-3.0.txt
+Copyright, attribution and component notices are preserved in the source archive.
+
+EasyTier runs as a separate process. The release archive and its original
+filename are preserved; the launcher verifies its SHA-256 before installation.

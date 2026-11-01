@@ -21,6 +21,10 @@ Copy-Item -LiteralPath $executable -Destination $testExecutable
 if (Test-Path -LiteralPath "$executable.config") {
     Copy-Item -LiteralPath "$executable.config" -Destination "$testExecutable.config"
 }
+$moduleBundle = Join-Path (Split-Path $executable -Parent) 'LinkModules'
+if (Test-Path -LiteralPath $moduleBundle) {
+    Copy-Item -LiteralPath $moduleBundle -Destination (Join-Path $work 'LinkModules') -Recurse
+}
 
 # A separate Framework process makes Paths.Base and the HTTP cache local to this test.
 $source = @'
@@ -55,6 +59,7 @@ public static class PclSmokeRunner {
     private static Dictionary<string, object> sourcePolicyResult;
     private static Dictionary<string, object> curseForgeResult;
     private static Dictionary<string, object> multiplayerResult;
+    private static Dictionary<string, object> downloadPerformanceResult;
     private const BindingFlags StaticMembers = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
 
     private static object Invoke(Type type, string name, params object[] arguments) {
@@ -459,13 +464,9 @@ public static class PclSmokeRunner {
             Require(Invoke(link, "ValidateCodeFormat", code) != null, "A malformed invitation was accepted.");
 
         string module = Path.Combine(work, "EasyTier-2.6.4");
-        object package = Invoke(link, "GetModulePackage", "x86_64", module);
-        Type packageType = package.GetType();
-        string archive = (string)packageType.GetField("LocalPath").GetValue(package);
-        object checker = packageType.GetField("Check").GetValue(package);
-        string[] urls = ((IEnumerable)packageType.GetField("Sources").GetValue(package)).Cast<object>()
-            .Select(s => (string)s.GetType().GetField("Url").GetValue(s)).ToArray();
-        Invoke(pcl.GetType("PCL.ModNet", true), "NetDownloadByLoader", urls, archive, null, checker, false);
+        string bundle = Path.Combine(work, "LinkModules");
+        string archive = Path.Combine(bundle, "easytier-windows-x86_64-v2.6.4.zip");
+        Require((bool)Invoke(link, "TryInstallBundledModule", "x86_64", bundle, module), "The supplied module was not installed offline.");
         string archiveHash;
         using (SHA256 sha = SHA256.Create())
         using (FileStream stream = File.OpenRead(archive))
@@ -477,7 +478,6 @@ public static class PclSmokeRunner {
         try { Invoke(link, "InstallModule", corrupt, Path.Combine(work, "rejected-link"), "x86_64"); }
         catch { rejected = true; }
         Require(rejected, "An unverified multiplayer module was installed.");
-        Invoke(link, "InstallModule", archive, module, "x86_64");
         string core = Path.Combine(module, "联机模块.exe");
         string cli = Path.Combine(module, "联机模块 CLI.exe");
         Require(File.Exists(core) && File.Exists(cli), "Native module executables were not installed.");
@@ -658,7 +658,7 @@ public static class PclSmokeRunner {
             bool publicRelayTcpUdpVerified = publicRelayResults.Any(p => (bool)p["passed"]);
             multiplayerResult = new Dictionary<string, object> {
                 { "passed", publicRelayTcpUdpVerified }, { "easyTierVersion", "2.6.4" }, { "moduleSha256", archiveHash },
-                { "pinnedPackageDownloadedAndInstalled", true }, { "invalidArchiveRejected", true },
+                { "bundledModuleInstalled", true }, { "initialModuleDownloadRequired", false }, { "invalidArchiveRejected", true },
                 { "invitationValidation", true }, { "customPeerValidation", true }, { "localRpcOnly", true },
                 { "clientDhcpReady", true }, { "nativeCliSchema", true }, { "tcpForwardEcho", true }, { "udpForwardEcho", true },
                 { "transport", "two native processes over loopback TCP using production argument builder" },
@@ -676,6 +676,19 @@ public static class PclSmokeRunner {
             tcpThread.Join(2000);
             udpThread.Join(2000);
         }
+    }
+
+    private static void CheckPortableLaunch() {
+        Type page = pcl.GetType("PCL.PageLaunchLeft", true);
+        Require((bool)Invoke(page, "CanAutoLaunch", new string[] { "PCL.exe", "--launch=26.3" }, "26.3", ""), "Portable startup request was rejected.");
+        foreach (string[] args in new string[][] {
+            new string[] { "PCL.exe" }, new string[] { "--launch=" }, new string[] { "--launch=26.2" },
+            new string[] { "--launch=26.3", "--launch=26.3" }, new string[] { "--launch=26.3/../other" }
+        }) Require(!(bool)Invoke(page, "CanAutoLaunch", args, "26.3", ""), "An ambiguous or mismatched portable startup request was accepted.");
+        Require(!(bool)Invoke(page, "CanAutoLaunch", new string[] { "--launch=26.3" }, "26.3", "login required"), "Portable startup ignored missing login information.");
+        Require(!(bool)Invoke(page, "CanAutoLaunch", new string[] { "--launch=26.3" }, "26.3", null), "Portable startup accepted an unknown login state.");
+        Require(!(bool)Invoke(page, "CanAutoLaunch", new string[] { "--launch=26.3" }, null, ""), "Portable startup accepted a missing instance.");
+        Console.WriteLine("PASS: portable startup requires an exact installed-instance request and available login information.");
     }
 
     private static void CheckMicrosoftPollingRules() {
@@ -912,9 +925,206 @@ public static class PclSmokeRunner {
         }
     }
 
+    private sealed class DownloadFixture : IDisposable {
+        private readonly TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+        private readonly Thread acceptor;
+        private bool running = true;
+        internal readonly byte[] Body = new byte[2 * 1024 * 1024];
+        internal readonly Dictionary<string, List<long>> Requests = new Dictionary<string, List<long>>();
+        internal readonly string Root;
+        internal DownloadFixture() {
+            new Random(716).NextBytes(Body);
+            listener.Start();
+            Root = "http://127.0.0.1:" + ((IPEndPoint)listener.LocalEndpoint).Port;
+            acceptor = new Thread(delegate() {
+                while (Volatile.Read(ref running)) {
+                    try {
+                        TcpClient client = listener.AcceptTcpClient();
+                        ThreadPool.QueueUserWorkItem(delegate { Respond(client); });
+                    } catch (SocketException) { if (Volatile.Read(ref running)) throw; }
+                      catch (ObjectDisposedException) { if (Volatile.Read(ref running)) throw; }
+                }
+            });
+            acceptor.IsBackground = true;
+            acceptor.Start();
+        }
+        private void Respond(TcpClient client) {
+            try {
+                using (client)
+                using (NetworkStream stream = client.GetStream())
+                using (StreamReader reader = new StreamReader(stream, Encoding.ASCII, false, 8192, true)) {
+                    client.ReceiveTimeout = 15000;
+                    client.SendTimeout = 15000;
+                    string request = reader.ReadLine();
+                    if (String.IsNullOrEmpty(request)) return;
+                    string path = request.Split(' ')[1];
+                    long start = 0;
+                    bool ranged = false;
+                    string line;
+                    while (!String.IsNullOrEmpty(line = reader.ReadLine())) {
+                        if (!line.StartsWith("Range: bytes=", StringComparison.OrdinalIgnoreCase)) continue;
+                        start = Int64.Parse(line.Substring("Range: bytes=".Length).Split('-')[0]);
+                        ranged = true;
+                    }
+                    lock (Requests) {
+                        if (!Requests.ContainsKey(path)) Requests[path] = new List<long>();
+                        Requests[path].Add(ranged ? start : -1);
+                    }
+                    if (path.StartsWith("/headers-", StringComparison.Ordinal)) Thread.Sleep(6500);
+                    string header = "HTTP/1.1 " + (ranged ? "206 Partial Content" : "200 OK") +
+                        "\r\nContent-Length: " + (Body.Length - start) + "\r\nAccept-Ranges: bytes\r\nConnection: close\r\n";
+                    if (ranged) header += "Content-Range: bytes " + start + "-" + (Body.Length - 1) + "/" + Body.Length + "\r\n";
+                    byte[] headers = Encoding.ASCII.GetBytes(header + "\r\n");
+                    stream.Write(headers, 0, headers.Length);
+                    int position = (int)start;
+                    if (path.StartsWith("/body-", StringComparison.Ordinal)) {
+                        stream.Write(Body, position, 65536);
+                        position += 65536;
+                        Thread.Sleep(6500);
+                    }
+                    if (path.StartsWith("/trickle-", StringComparison.Ordinal)) {
+                        int chunks = path.Contains("competing") ? 75 : 65;
+                        for (int i = 0; i < chunks && Volatile.Read(ref running); i++) {
+                            stream.Write(Body, position, 1024);
+                            position += 1024;
+                            Thread.Sleep(100);
+                        }
+                    }
+                    if (Volatile.Read(ref running)) stream.Write(Body, position, Body.Length - position);
+                }
+            } catch (IOException) { }
+              catch (SocketException) { }
+              catch (ObjectDisposedException) { }
+        }
+        internal long[] Starts(string path) {
+            lock (Requests) return Requests.ContainsKey(path) ? Requests[path].ToArray() : new long[0];
+        }
+        public void Dispose() {
+            Volatile.Write(ref running, false);
+            listener.Stop();
+            acceptor.Join(2000);
+        }
+    }
+
+    private static void CheckOfficialRedirectPredicate() {
+        Type network = pcl.GetType("PCL.ModNet", true);
+        string source = "https://bmclapi2.bangbang93.com/test.jar";
+        Func<string, string, bool, bool, long, bool> accepts = delegate(string original, string target, bool ranges, bool partial, long size) {
+            using (HttpResponseMessage response = new HttpResponseMessage(partial ? HttpStatusCode.PartialContent : HttpStatusCode.OK)) {
+                response.RequestMessage = new HttpRequestMessage(HttpMethod.Get, target);
+                response.Content = new ByteArrayContent(new byte[0]);
+                response.Content.Headers.ContentLength = partial ? 900 : 1000;
+                if (ranges) response.Headers.AcceptRanges.Add("bytes");
+                if (partial) response.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(100, 999, 1000);
+                return (bool)Invoke(network, "NetCanSplitOfficialRedirect", original, response, size, partial ? 100L : 0L);
+            }
+        };
+        foreach (string host in new string[] { "piston-data.mojang.com", "launcher.mojang.com", "libraries.minecraft.net", "resources.download.minecraft.net" }) {
+            Require(accepts(source, "https://" + host + "/test.jar", true, false, 1000), "Trusted CDN byte-range response was rejected: " + host);
+            Require(accepts(source, "https://" + host + "/test.jar", false, true, 1000), "Trusted CDN valid 206 was rejected: " + host);
+        }
+        foreach (string target in new string[] {
+            "https://piston-data.mojang.com.example.invalid/test.jar", "https://example.invalid/test.jar?host=piston-data.mojang.com",
+            "https://user@piston-data.mojang.com/test.jar", "http://piston-data.mojang.com/test.jar",
+            "https://piston-data.mojang.com:444/test.jar", "https://bmclapi2.bangbang93.com/test.jar", "https://bmclapi.hurtmc.com/test.jar" })
+            Require(!accepts(source, target, true, false, 1000), "Untrusted redirect enabled segmentation: " + target);
+        foreach (string original in new string[] { "https://bmclapi2.bangbang93.com.example.invalid/test.jar", "http://bmclapi2.bangbang93.com/test.jar",
+            "https://user@bmclapi2.bangbang93.com/test.jar", "https://bmclapi2.bangbang93.com:444/test.jar" })
+            Require(!accepts(original, "https://piston-data.mojang.com/test.jar", true, false, 1000), "Untrusted original URL enabled segmentation.");
+        Require(!accepts(source, "https://piston-data.mojang.com/test.jar", false, false, 1000), "Missing range evidence enabled segmentation.");
+        Require(!accepts(source, "https://piston-data.mojang.com/test.jar", true, false, -1), "Unknown file size enabled segmentation.");
+        Require(!accepts(source, "https://piston-data.mojang.com/test.jar", false, true, 1001), "Mismatched Content-Range total enabled segmentation.");
+        Require(accepts("https://BMCLAPI2.BANGBANG93.COM/test.jar", "https://PISTON-DATA.MOJANG.COM/test.jar", true, false, 1000), "Case-insensitive exact hosts were rejected.");
+        using (HttpResponseMessage malformed = new HttpResponseMessage(HttpStatusCode.PartialContent)) {
+            malformed.RequestMessage = new HttpRequestMessage(HttpMethod.Get, "https://piston-data.mojang.com/test.jar");
+            malformed.Content = new ByteArrayContent(new byte[0]);
+            malformed.Headers.AcceptRanges.Add("bytes");
+            Require(!(bool)Invoke(network, "NetCanSplitOfficialRedirect", source, malformed, 1000L, 100L), "Malformed 206 bypassed Content-Range validation.");
+            malformed.Content.Headers.ContentLength = 900;
+            malformed.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(99, 998, 1000);
+            Require(!(bool)Invoke(network, "NetCanSplitOfficialRedirect", source, malformed, 1000L, 100L), "Wrong Range start enabled segmentation.");
+            malformed.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(100, 999, 1000);
+            malformed.Content.Headers.ContentLength = 899;
+            Require(!(bool)Invoke(network, "NetCanSplitOfficialRedirect", source, malformed, 1000L, 100L), "Wrong Range body length enabled segmentation.");
+        }
+    }
+
+    private static Dictionary<string, object> CheckDownloadPerformance(string work) {
+        CheckOfficialRedirectPredicate();
+        Type network = pcl.GetType("PCL.ModNet", true);
+        Type settings = pcl.GetType("PCL.Settings", true);
+        object savedThreads = Invoke(settings, "Get", "ToolDownloadThread", null);
+        object savedSpeed = Invoke(settings, "Get", "ToolDownloadSpeed", null);
+        string folder = Path.Combine(work, "DownloadPerformance");
+        Directory.CreateDirectory(folder);
+        List<object> results = new List<object>();
+        using (DownloadFixture fixture = new DownloadFixture()) {
+            string hash = Sha1(fixture.Body);
+            Action<string, string[], bool, bool> run = delegate(string name, string[] sources, bool fallback, bool resumed) {
+                string destination = Path.Combine(folder, name + ".bin");
+                Stopwatch timer = Stopwatch.StartNew();
+                Exception transferFailure = null;
+                Thread transfer = new Thread(delegate() {
+                    try { Invoke(network, "NetDownloadByLoader", sources.Select(path => fixture.Root + path).ToArray(), destination, null, NewChecker(fixture.Body.Length, hash, false), false); }
+                    catch (Exception ex) { transferFailure = ex; }
+                });
+                transfer.IsBackground = true;
+                transfer.Start();
+                Require(transfer.Join(20000), "Performance fixture exceeded 20 seconds: " + name);
+                if (transferFailure != null) throw transferFailure;
+                timer.Stop();
+                Require(File.ReadAllBytes(destination).SequenceEqual(fixture.Body), "Performance fixture bytes/hash differ: " + name);
+                long[] secondary = sources.Length > 1 ? fixture.Starts(sources[1]) : new long[0];
+                Require((secondary.Length > 0) == fallback, "Unexpected source switching: " + name);
+                if (resumed) Require(secondary.Any(start => start > 0), "Fallback discarded partial data instead of resuming Range: " + name);
+                if (fallback) Require(timer.Elapsed.TotalSeconds < 14, "Fallback exceeded its bounded latency: " + name);
+                results.Add(new Dictionary<string, object> { { "case", name }, { "elapsedMs", timer.ElapsedMilliseconds }, { "fallback", secondary.Length > 0 }, { "rangeResumed", secondary.Any(start => start > 0) }, { "secondaryRangeStarts", secondary }, { "sha1Verified", true } });
+            };
+            try {
+                Invoke(settings, "Set", "ToolDownloadThread", 0, null);
+                Invoke(settings, "Set", "ToolDownloadSpeed", 42, null);
+                Invoke(network, "UpdateNetTaskSpeedLimitHigh", 42);
+                run("headers-stall", new string[] { "/headers-stall", "/fast-headers" }, true, false);
+                run("body-stall", new string[] { "/body-stall", "/fast-body" }, true, true);
+                run("trickle-fallback", new string[] { "/trickle-slow", "/fast-trickle" }, true, true);
+                run("sole-trickle", new string[] { "/trickle-sole" }, false, false);
+                run("last-viable-trickle", new string[] { "/trickle-all-first", "/trickle-all-last" }, true, true);
+                Invoke(settings, "Set", "ToolDownloadSpeed", 40, null);
+                Invoke(network, "UpdateNetTaskSpeedLimitHigh", 40);
+                run("capped-trickle", new string[] { "/trickle-capped", "/fast-capped" }, false, false);
+                Invoke(settings, "Set", "ToolDownloadSpeed", 42, null);
+                Invoke(network, "UpdateNetTaskSpeedLimitHigh", 42);
+                Invoke(settings, "Set", "ToolDownloadThread", 1, null);
+                Exception competitorFailure = null;
+                Thread competitor = new Thread(delegate() {
+                    try {
+                        string destination = Path.Combine(folder, "competitor.bin");
+                        Invoke(network, "NetDownloadByLoader", new string[] { fixture.Root + "/trickle-competing" }, destination, null, NewChecker(fixture.Body.Length, hash, false), false);
+                        Require(File.ReadAllBytes(destination).SequenceEqual(fixture.Body), "Competing transfer hash differs.");
+                    } catch (Exception ex) { competitorFailure = ex; }
+                });
+                competitor.IsBackground = true;
+                competitor.Start();
+                Stopwatch wait = Stopwatch.StartNew();
+                while (fixture.Starts("/trickle-competing").Length == 0 && wait.ElapsedMilliseconds < 3000) Thread.Sleep(10);
+                Require(fixture.Starts("/trickle-competing").Length > 0, "Competing transfer did not start.");
+                try { run("shared-trickle", new string[] { "/trickle-shared", "/fast-shared" }, false, false); }
+                finally { Require(competitor.Join(15000), "Competing transfer did not finish."); }
+                if (competitorFailure != null) throw competitorFailure;
+            } finally {
+                Invoke(settings, "Set", "ToolDownloadThread", savedThreads, null);
+                Invoke(settings, "Set", "ToolDownloadSpeed", savedSpeed, null);
+                Invoke(network, "UpdateNetTaskSpeedLimitHigh", Convert.ToInt32(savedSpeed));
+            }
+        }
+        Console.WriteLine("PASS: stalled/trickle source fallback, Range resume, capped/shared/sole transfers, and official redirect trust boundaries.");
+        return new Dictionary<string, object> { { "passed", true }, { "loopbackOnly", true }, { "officialRedirectPredicate", true }, { "cases", results } };
+    }
+
     private static void DownloadTest(string work) {
         Invoke(pcl.GetType("PCL.Settings", true), "Set", "SystemDebugSkipCopy", true, null);
         Dictionary<string, object> fallbackResult = CheckLocalFallback(work);
+        downloadPerformanceResult = CheckDownloadPerformance(work);
         Dictionary<string, object> loginResult = CheckMicrosoftDeviceCode();
         Type download = pcl.GetType("PCL.ModDownload", true);
         Type network = pcl.GetType("PCL.ModNet", true);
@@ -947,6 +1157,8 @@ public static class PclSmokeRunner {
             { "downloadEngine", "PCL.ModNet.NetDownloadByLoader with production sources and FileChecker" },
             { "manifestSources", jsonSources }, { "clientSources", jarSources },
             { "sourcePolicy", sourcePolicyResult }, { "localFallback", fallbackResult },
+            { "downloadPerformance", downloadPerformanceResult },
+            { "portableLaunchRules", true },
             { "settingsStorage", "isolated default settings in local Setup.ini" },
             { "downloadRestriction", false }, { "updateMethods", "verified no-op IL" },
             { "fixedSettings", "Set and Reset preserve updates=3, announcements=2, telemetry=false" },
@@ -999,6 +1211,7 @@ public static class PclSmokeRunner {
             Console.WriteLine("VERIFY: original toolbox behavior");
             CheckToolbox(work);
             CheckMicrosoftPollingRules();
+            CheckPortableLaunch();
             Console.WriteLine("VERIFY: download source ordering and fallback plan");
             CheckSourcePolicy(work);
             Exception failure = null;
@@ -1010,14 +1223,14 @@ public static class PclSmokeRunner {
             });
             worker.IsBackground = true;
             worker.Start();
-            DateTime deadline = DateTime.UtcNow.AddMinutes(5);
+            DateTime deadline = DateTime.UtcNow.AddMinutes(8);
             while (!Volatile.Read(ref finished) && DateTime.UtcNow < deadline) {
                 DispatcherFrame frame = new DispatcherFrame();
                 Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, new Action(delegate { frame.Continue = false; }));
                 Dispatcher.PushFrame(frame);
                 Thread.Sleep(10);
             }
-            Require(finished, "Minecraft download smoke test timed out after five minutes.");
+            Require(finished, "Minecraft download smoke test timed out after eight minutes.");
             if (failure != null) throw failure;
             result = 0;
         } catch (Exception ex) {
