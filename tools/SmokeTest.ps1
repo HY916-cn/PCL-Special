@@ -4,6 +4,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($env:GITHUB_ACTIONS -eq 'true' -and (Test-Path 'HKCU:\Software\PCLHY916Fixed')) {
+    throw 'GUI smoke test requires a fresh disposable Windows profile.'
+}
 $executable = (Resolve-Path -LiteralPath $ExecutablePath).Path
 $work = [IO.Path]::GetFullPath($WorkDirectory)
 if (Test-Path -LiteralPath $work) {
@@ -747,9 +750,7 @@ if ((Get-FileHash -LiteralPath $testExecutable -Algorithm SHA256).Hash -ne $befo
 $reportPath = Join-Path $work 'smoke-result.json'
 $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
 if ($env:GITHUB_ACTIONS -eq 'true') {
-    if (Test-Path 'HKCU:\Software\PCLHY916Fixed') {
-        throw 'GUI smoke test requires a fresh disposable Windows profile.'
-    }
+    # The --update launch can initialize and persist its local identity before exiting.
     $gui = Start-Process -FilePath $testExecutable -WorkingDirectory $work -PassThru
     try {
         $loaded = $false
