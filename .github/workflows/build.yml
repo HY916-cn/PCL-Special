@@ -31,12 +31,12 @@ jobs:
         shell: pwsh
         env:
           PCL_EXPECT_CURSEFORGE_KEY: 'true'
-        run: ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL特别版-2.99.0.1.exe -WorkDirectory ./artifacts/smoke
+        run: ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL特别版-2.99.99.exe -WorkDirectory ./artifacts/smoke
       - name: Upload packages and verification
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: PCL特别版-2.99.0.1
+          name: PCL特别版-2.99.99
           retention-days: 30
           path: |
             dist/*

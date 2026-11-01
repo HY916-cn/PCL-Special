@@ -8,7 +8,7 @@
 
 ## 使用
 
-解压 Windows 包到一个独立文件夹，双击 `PCL特别版-2.99.0.1.exe`。需要 Windows 和 .NET Framework 4.8。
+解压 Windows 包到一个独立文件夹，双击 `PCL特别版-2.99.99.exe`。需要 Windows 和 .NET Framework 4.8。
 在“下载”中选择 Minecraft 版本即可安装；模组加载器、整合包安装与文件补全沿用 PCL 的下载流程。
 在“更多 → 百宝箱”中使用今日人品、内存优化、清理游戏垃圾、千万别点、回声洞和自定义文件下载。
 百宝箱沿用公开版本的布局、文案、动画和功能流程。清理游戏垃圾会删除游戏日志、错误报告、调试输出、可重新解压的原生库和本特别版全部缓存，完成后关闭或重启启动器；自定义缓存路径会在确认框中明确显示。
@@ -69,7 +69,7 @@ Client ID 是应用标识，不是微软账号密码；此设备代码流程不�
 
 ## 源码与构建
 
-源码随 `PCL特别版-2.99.0.1-Source.zip` 提供，包含特别版本的 MeloongCore。
+源码随 `PCL特别版-2.99.99-Source.zip` 提供，包含特别版本的 MeloongCore。
 源码及修改保留仓库中的 `LICENCE`、正版购买提示、原作者署名与赞助链接。
 PCL特别版由 Haoyu Huang 制作开发，关于页面使用其提供的头像。主题页面的全部 15 项可选，色值和渐变参考公开快照版本的主题实现，包含“滑稽彩”动态轮色、“欧皇彩”固定三段渐变和自定义调色。
 
@@ -81,7 +81,7 @@ Windows 安装 Visual Studio 2022 Build Tools（.NET 桌面开发、.NET Framewo
 
 ```powershell
 ./tools/Build.ps1
-pwsh -NoProfile -File ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL特别版-2.99.0.1.exe -WorkDirectory ./artifacts/smoke
+pwsh -NoProfile -File ./tools/SmokeTest.ps1 -ExecutablePath ./dist/PCL特别版-2.99.99.exe -WorkDirectory ./artifacts/smoke
 ```
 
 `dist` 目录包含程序、Windows 压缩包、源码压缩包与 SHA-256 校验文件。
