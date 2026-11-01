@@ -1282,8 +1282,8 @@ if ($env:GITHUB_ACTIONS -eq 'true') {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         while ([DateTime]::UtcNow -lt $deadline -and -not $gui.HasExited) {
             $gui.Refresh()
-            $logPath = Join-Path $standaloneDirectory 'PCLHY916Fixed/Log1.txt'
-            $log = if (Test-Path $logPath) { Get-Content -LiteralPath $logPath -Raw -Encoding UTF8 } else { '' }
+            $logPaths = @('PCLHY916Fixed/Log1.txt', 'logs/Log1.txt') | ForEach-Object { Join-Path $standaloneDirectory $_ } | Where-Object { Test-Path -LiteralPath $_ }
+            $log = ($logPaths | ForEach-Object { Get-Content -LiteralPath $_ -Raw -Encoding UTF8 }) -join "`n"
             if ($gui.MainWindowHandle -ne [IntPtr]::Zero -and $gui.MainWindowTitle -eq 'PCL特别版' -and $log.Contains('第三阶段加载用时')) {
                 $loaded = $true
                 break

@@ -54,8 +54,8 @@ jobs:
               $child = Get-Process -Name 'PCL特别版-2.99.99' -ErrorAction SilentlyContinue | Where-Object Path -eq $childPath | Select-Object -First 1
               if ($null -ne $child) {
                 $child.Refresh()
-                $logPath = Join-Path $childDirectory 'PCLHY916Fixed/Log1.txt'
-                $log = if (Test-Path $logPath) { Get-Content -LiteralPath $logPath -Raw -Encoding UTF8 } else { '' }
+                $logPaths = @('PCLHY916Fixed/Log1.txt', 'logs/Log1.txt') | ForEach-Object { Join-Path $childDirectory $_ } | Where-Object { Test-Path -LiteralPath $_ }
+                $log = ($logPaths | ForEach-Object { Get-Content -LiteralPath $_ -Raw -Encoding UTF8 }) -join "`n"
                 if ($child.MainWindowHandle -ne [IntPtr]::Zero -and $child.MainWindowTitle -eq 'PCL特别版' -and $log.Contains('第三阶段加载用时')) { $loaded = $true; break }
               }
               Start-Sleep -Milliseconds 250
