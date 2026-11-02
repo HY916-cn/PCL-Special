@@ -40,7 +40,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $base = Join-Path $PWD 'artifacts/single-file/full-check'
-          $entry = Join-Path $base 'PCL联机版-2.99.99.exe'
+          $entry = Join-Path $base 'PCL特别版-联机版-2.99.99.exe'
           $childDirectory = Join-Path $base 'PCL联机版-2.99.99'
           $childPath = Join-Path $childDirectory 'PCL特别版-2.99.99.exe'
           $entryProcess = Start-Process -FilePath $entry -WorkingDirectory $base -PassThru

@@ -103,11 +103,11 @@ try {
     $report.checks += 'Corrupt and truncated payloads fail without extraction in non-GUI mode'
     $report.fixtureDirectory = $fixture
 
-    $package = Join-Path $output 'PCL联机版-2.99.99.exe'
+    $package = Join-Path $output 'PCL特别版-联机版-2.99.99.exe'
     & python (Join-Path $PSScriptRoot 'MakeSingleFile.py') --stub $stub `
-        --archive (Join-Path $output 'PCL联机版-2.99.99.zip') --output $package `
-        --edition 'PCL联机版' --folder 'PCL联机版-2.99.99' --launcher 'PCL特别版-2.99.99.exe'
-    if ($LASTEXITCODE -ne 0) { throw 'PCL联机版 single-file assembly failed.' }
+        --archive (Join-Path $output 'PCL特别版-联机版-2.99.99.zip') --output $package `
+        --edition 'PCL特别版-联机版' --folder 'PCL联机版-2.99.99' --launcher 'PCL特别版-2.99.99.exe'
+    if ($LASTEXITCODE -ne 0) { throw 'PCL特别版-联机版 single-file assembly failed.' }
     $fullCheck = Join-Path $artifacts 'full-check'
     New-Item -ItemType Directory -Force -Path $fullCheck | Out-Null
     $fullWrapper = Join-Path $fullCheck ([IO.Path]::GetFileName($package))

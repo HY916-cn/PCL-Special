@@ -32,6 +32,7 @@ try {
     & (Join-Path $PSScriptRoot 'PrepareEasyTier.ps1') -OutputDirectory (Join-Path $output 'LinkModules')
     Copy-Item "Plain Craft Launcher 2/obj/Release/Plain Craft Launcher 2.exe" "$output/$name.exe"
     Copy-Item "Plain Craft Launcher 2/App.config" "$output/$name.exe.config"
+    Copy-Item "$output/$name.exe" "$output/PCL特别版-精简版-2.99.99.exe"
     Copy-Item README.md "$output/使用说明.md"
     Copy-Item LICENCE "$output/LICENCE"
     $hasGit = Test-Path (Join-Path $root ".git")
@@ -45,8 +46,8 @@ Upstream: Meloong-Git/PCL 93ede5d9e638c99fcec853a9ba1eecd91ceee7f5
 MeloongCore: $coreRevision
 "@ | Set-Content "$output/SOURCE.txt" -Encoding utf8
     $files = @("$output/$name.exe", "$output/$name.exe.config", "$output/使用说明.md", "$output/LICENCE", "$output/SOURCE.txt", "$output/LinkModules")
-    Compress-Archive -LiteralPath "$output/$name.exe" -DestinationPath "$output/$name.zip" -Force
-    Compress-Archive -Path $files -DestinationPath "$output/PCL联机版-2.99.99.zip" -Force
+    Compress-Archive -LiteralPath "$output/PCL特别版-精简版-2.99.99.exe" -DestinationPath "$output/PCL特别版-精简版-2.99.99.zip" -Force
+    Compress-Archive -Path $files -DestinationPath "$output/PCL特别版-联机版-2.99.99.zip" -Force
 
     $source = Join-Path $root "artifacts/source"
     New-Item -ItemType Directory -Force $source | Out-Null
