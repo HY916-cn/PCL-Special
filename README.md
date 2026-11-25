@@ -1,14 +1,39 @@
-# PCL特别版
+<div align="center">
 
-第三方基于 Plain Craft Launcher（PCL）独立修改的 Windows Minecraft 启动器。
-制作开发者：Haoyu Huang。
-原作者：龙腾猫跃。[支持原作者](https://meloong.com/afd/a/LTCat)。
+# PCL 特别版
+
+**第三方基于 Plain Craft Launcher（PCL）独立修改的 Windows Minecraft 启动器**
+
+[![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows&logoColor=white)](https://www.microsoft.com/windows/)
+[![.NET Framework](https://img.shields.io/badge/.NET_Framework-4.8-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![Visual Basic](https://img.shields.io/badge/Visual_Basic-.NET-512BD4?logo=dotnet&logoColor=white)](https://learn.microsoft.com/dotnet/visual-basic/)
+[![Minecraft](https://img.shields.io/badge/Minecraft-Java_Edition-62B47A)](https://www.minecraft.net/)
+[![License](https://img.shields.io/badge/License-PCL_limited-orange)](LICENCE)
+
+[![Stars](https://img.shields.io/github/stars/HY916-cn/PCL-Special?logo=github&label=Stars)](https://github.com/HY916-cn/PCL-Special/stargazers)
+[![Forks](https://img.shields.io/github/forks/HY916-cn/PCL-Special?logo=github&label=Forks)](https://github.com/HY916-cn/PCL-Special/network/members)
+[![Last Commit](https://img.shields.io/github/last-commit/HY916-cn/PCL-Special?logo=git&logoColor=white)](https://github.com/HY916-cn/PCL-Special/commits/main)
+[![Repo Size](https://img.shields.io/github/repo-size/HY916-cn/PCL-Special)](https://github.com/HY916-cn/PCL-Special)
+[![Issues](https://img.shields.io/github/issues/HY916-cn/PCL-Special?logo=github&label=Issues)](https://github.com/HY916-cn/PCL-Special/issues)
+
+提供精简、联机与完整三种版本，集成 Minecraft 下载、中国大陆镜像切源、<br/>
+EasyTier 无 TUN 联机、微软正版登录与百宝箱。
+
+</div>
+
+---
+
+制作开发者：Haoyu Huang。原作者：龙腾猫跃。[支持原作者](https://meloong.com/afd/a/LTCat)。
 
 基于上游 `93ede5d9e638c99fcec853a9ba1eecd91ceee7f5`（2.99.0.1），MeloongCore 固定为 `4c60c2962c3b50bc3fe96ed5dd9259b980173580`。
 
+## 获取构建产物
+
+本仓库尚未发布 GitHub Release。三种 EXE 由 [Build special edition](https://github.com/HY916-cn/PCL-Special/actions/workflows/build.yml) 工作流生成：打开最近一次成功运行，在 Artifacts 中下载 `PCL特别版-2.99.99`。Actions 构建产物保留 30 天；如无可用产物，请按「源码与构建」在 Windows 本地生成。
+
 ## 使用
 
-提供三个 EXE，均需要 Windows 和 .NET Framework 4.8：
+构建流程生成三个 EXE，均需要 Windows 和 .NET Framework 4.8：
 
 - `PCL特别版-精简版-2.99.99.exe`：只包含启动器本体，游戏和联机模块按需下载。
 - `PCL特别版-联机版-2.99.99.exe`：随附联机模块，适用于 Windows x64。
@@ -93,7 +118,14 @@ PCL特别版由 Haoyu Huang 制作开发，关于页面使用其提供的头像�
 
 百宝箱布局与流程参考[公开快照实现](https://github.com/TomorrowX6/PCL-Snapshot/blob/d867f395b2b79939127b95e873e2c2c6113cb53f/PCL/PageOtherTest.xaml.cs)，回声洞保留公开版本内置的 735 条文本、原版分组抽取、31 条预设提示及闪烁逐字动画。
 
-Windows 安装 Visual Studio 2022 Build Tools（.NET 桌面开发、.NET Framework 4.8 SDK）、PowerShell 7 及支持 C# 13 的 .NET SDK 后执行：
+Windows 安装 Visual Studio 2022 Build Tools（.NET 桌面开发、.NET Framework 4.8 SDK）、PowerShell 7 及支持 C# 13 的 .NET SDK 后，从 Developer PowerShell / Developer Command Prompt 启动 PowerShell 7，或先确保 `msbuild` 已加入 `PATH`。然后连同子模块克隆仓库：
+
+```powershell
+git clone --recurse-submodules https://github.com/HY916-cn/PCL-Special.git
+Set-Location '.\PCL-Special'
+```
+
+然后构建并执行烟雾测试：
 
 ```powershell
 ./tools/Build.ps1
